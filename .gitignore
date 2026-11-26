@@ -1,5 +1,6 @@
 /target
 *.trace.json
+.cloudflare
 site/node_modules
 site/.wrangler
 
