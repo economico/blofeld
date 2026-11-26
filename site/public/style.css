@@ -141,7 +141,6 @@ summary:focus-visible,
   inline-size: 2rem;
   block-size: 2rem;
   aspect-ratio: 1 / 1;
-  border: 1px solid var(--ink);
 }
 
 .site-nav {
@@ -261,10 +260,7 @@ p:last-child {
 }
 
 .hero-art-frame {
-  border: 1px solid var(--ink);
   background: var(--bg);
-  padding: var(--s-md);
-  box-shadow: 8px 8px 0 var(--equity-fill);
   max-inline-size: 380px;
   inline-size: 100%;
 }
