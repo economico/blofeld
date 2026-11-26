@@ -11,7 +11,7 @@ Run `blofeld --help` for the complete flag list.
 
 ## Workflow
 
-1. **Ensure `blofeld` is available.** Check `which blofeld`; if missing, install from a local checkout or git (`cargo install --git https://github.com/economico/blofeld` or `cargo build --release` in the repo). Done when `blofeld --help` exits 0.
+1. **Ensure `blofeld` is available.** Check `which blofeld`; if missing, install from crates.io (`cargo install blofeld`) or from a local checkout (`cargo build --release`). Done when `blofeld --help` exits 0.
 2. **Prepare an isolated target and auth.**
    - Prefer an isolated local server with ephemeral state so write/mutating tools can be fuzzed freely. Against staging or shared environments, pass `--read-only` (restricts calls to tools with `readOnlyHint: true`) or `--only <tool>`.
    - For local self-signed HTTPS (such as `wrangler dev --local-protocol https`), pass `-k`.

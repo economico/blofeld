@@ -2,8 +2,15 @@
 name = "blofeld"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.86"
 description = "Fast, zero-config property-based testing and autonomous fuzzing for MCP servers"
 license = "MIT"
+repository = "https://github.com/economico/blofeld"
+homepage = "https://github.com/economico/blofeld"
+readme = "README.md"
+keywords = ["mcp", "testing", "fuzzing", "property-testing", "antithesis"]
+categories = ["development-tools::testing", "command-line-utilities"]
+exclude = ["assets/*", ".github/*"]
 
 [dependencies]
 antithesis_sdk = { version = "0.4", default-features = false, features = ["full"] }

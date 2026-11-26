@@ -1,4 +1,4 @@
-# ![Blofeld — property-based testing for MCP servers](assets/banner.png)
+# ![Blofeld — property-based testing for MCP servers](https://raw.githubusercontent.com/economico/blofeld/main/assets/banner.png)
 
 Blofeld explores failures in [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers autonomously. Point it at an MCP server URL and it discovers the server's tools, resources, and prompts, generates schema-guided valid, boundary, and malformed calls, chains returned IDs across steps, checks protocol and custom invariants, and shrinks any failure down to a minimal replayable trace.
 
@@ -8,10 +8,11 @@ We use Blofeld at [Economico](https://economi.co/?utm_source=github&utm_medium=r
 
 ## Try it
 
-Point `blofeld` at any Streamable HTTP MCP server URL:
+Install from [crates.io](https://crates.io/crates/blofeld) and point `blofeld` at any Streamable HTTP MCP server URL:
 
 ```sh
-cargo run -- http://localhost:3000/mcp
+cargo install blofeld
+blofeld http://localhost:3000/mcp
 ```
 
 With authentication (`--token`, `BLOFELD_TOKEN`, or `--token-file` reading either a raw token or JSON `{ "accessToken" | "access_token" | "token" }`), self-signed local HTTPS (`-k`), or read-only safety:
@@ -88,7 +89,7 @@ rules:
 
 ## Built by Economico
 
-[![Economico: the business context layer for founders and their agents](assets/economico.gif)](https://economi.co/?utm_source=github&utm_medium=readme&utm_campaign=blofeld)
+[![Economico: the business context layer for founders and their agents](https://raw.githubusercontent.com/economico/blofeld/main/assets/economico.gif)](https://economi.co/?utm_source=github&utm_medium=readme&utm_campaign=blofeld)
 
 Blofeld comes out of [Economico](https://economi.co/?utm_source=github&utm_medium=readme&utm_campaign=blofeld), the business context layer for founders and their agents. Your customers, agreements, activity and money live in one structured record your own agents operate, with real books and evidence behind every answer.
 
