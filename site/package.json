@@ -1,0 +1,13 @@
+{
+  "name": "blofeld-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "cp ../skills/blofeld/SKILL.md public/skill.md && cp ../assets/logo.png public/logo.png && cp ../assets/banner.png public/banner.png && cp ../assets/economico.gif public/economico.gif",
+    "dev": "npm run sync && wrangler dev --port 8788",
+    "deploy": "npm run sync && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

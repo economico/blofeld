@@ -1,0 +1,42 @@
+interface Env {
+  ASSETS: Fetcher;
+}
+
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+};
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    // Canonicalize www.blofeld.dev -> https://blofeld.dev
+    if (url.hostname === "www.blofeld.dev") {
+      url.hostname = "blofeld.dev";
+      url.protocol = "https:";
+      return Response.redirect(url.toString(), 301);
+    }
+
+    const assetResponse = await env.ASSETS.fetch(request);
+    const headers = new Headers(assetResponse.headers);
+    for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+      headers.set(key, value);
+    }
+
+    // Serve /skill.md as raw UTF-8 markdown with permissive CORS so any agent can fetch it
+    if (url.pathname === "/skill.md") {
+      headers.set("Content-Type", "text/markdown; charset=utf-8");
+      headers.set("Access-Control-Allow-Origin", "*");
+      headers.set("Cache-Control", "public, max-age=300");
+    }
+
+    return new Response(assetResponse.body, {
+      status: assetResponse.status,
+      statusText: assetResponse.statusText,
+      headers,
+    });
+  },
+};

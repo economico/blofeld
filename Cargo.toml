@@ -10,7 +10,7 @@ homepage = "https://github.com/economico/blofeld"
 readme = "README.md"
 keywords = ["mcp", "testing", "fuzzing", "property-testing", "antithesis"]
 categories = ["development-tools::testing", "command-line-utilities"]
-exclude = ["assets/*", ".github/*"]
+exclude = ["assets/*", ".github/*", "site/*"]
 
 [dependencies]
 antithesis_sdk = { version = "0.4", default-features = false, features = ["full"] }

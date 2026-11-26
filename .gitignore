@@ -1,2 +1,5 @@
 /target
 *.trace.json
+site/node_modules
+site/.wrangler
+
