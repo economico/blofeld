@@ -387,9 +387,22 @@ fn gen_value(
                 .map(|a| a.iter().filter_map(Value::as_str).collect())
                 .unwrap_or_default();
             if let Some(props) = schema.get("properties").and_then(Value::as_object) {
+                // Vary optional-field density per object so minimal calls (required fields only)
+                // succeed against strict action-discriminated APIs and harvest live IDs, while
+                // sparse/dense calls still exercise filter and parameter combinations.
+                let opt_prob = if boundary {
+                    0.75
+                } else {
+                    match tc.draw_silent(gs::integers::<u8>().min_value(0).max_value(2)) {
+                        0 => 0.0,
+                        1 => 0.2,
+                        _ => 0.65,
+                    }
+                };
                 for (k, prop_schema) in props {
                     let is_req = required.contains(&k.as_str());
-                    if is_req || tc.draw_silent(gs::weighted_booleans(0.6)) {
+                    if is_req || (opt_prob > 0.0 && tc.draw_silent(gs::weighted_booleans(opt_prob)))
+                    {
                         let v =
                             gen_value(prop_schema, Some(k.as_str()), pool, tc, boundary, depth + 1);
                         obj.insert(k.clone(), v);
