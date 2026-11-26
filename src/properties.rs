@@ -105,13 +105,35 @@ pub fn check_step(
     }
 
     // 4. Valid JSON-RPC 2.0 envelope
+    // Per MCP Streamable HTTP spec, HTTP 4xx transport-level refusals (e.g. 401/403/400/405)
+    // may return a plain HTTP error body without a JSON-RPC envelope; HTTP 2xx must always be
+    // valid JSON-RPC 2.0.
+    let is_http_4xx = outcome.http_status.is_some_and(|s| (400..500).contains(&s));
     let Some(raw) = &outcome.raw_response else {
-        violations.push(Violation {
-            property: "valid_jsonrpc_envelope".into(),
-            message: "missing parsed JSON-RPC response".into(),
-        });
+        if !is_http_4xx {
+            violations.push(Violation {
+                property: "valid_jsonrpc_envelope".into(),
+                message: "missing parsed JSON-RPC response".into(),
+            });
+        }
         return violations;
     };
+
+    if is_http_4xx && raw.get("jsonrpc").is_none() {
+        // Check for internal error leaks even on HTTP 4xx bodies, then return cleanly.
+        let serialized = raw.to_string();
+        let leaked = LEAK_SIGNATURES
+            .iter()
+            .find(|sig| serialized.contains(**sig));
+        assert_always!(leaked.is_none(), "mcp_no_internal_error_leak", &details);
+        if let Some(sig) = leaked {
+            violations.push(Violation {
+                property: "no_internal_error_leak".into(),
+                message: format!("HTTP 4xx response leaked internal runtime signature '{sig}'"),
+            });
+        }
+        return violations;
+    }
 
     let envelope_err = check_jsonrpc_envelope(raw, outcome.request_id);
     let envelope_ok = envelope_err.is_none();

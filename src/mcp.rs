@@ -14,6 +14,8 @@ pub enum Target {
     Http {
         url: String,
         headers: Vec<(String, String)>,
+        #[serde(default)]
+        insecure: bool,
     },
     Stdio {
         command: Vec<String>,
@@ -194,9 +196,14 @@ pub struct McpClient {
 impl McpClient {
     pub async fn connect(target: &Target, timeout: Duration) -> Result<Self> {
         let transport = match target {
-            Target::Http { url, headers } => {
+            Target::Http {
+                url,
+                headers,
+                insecure,
+            } => {
                 let client = reqwest::Client::builder()
                     .timeout(timeout)
+                    .danger_accept_invalid_certs(*insecure)
                     .build()
                     .context("failed to build HTTP client")?;
                 let mut map = HeaderMap::new();

@@ -23,6 +23,10 @@ struct Cli {
     #[arg(short = 'H', long = "header", value_name = "KEY: VALUE")]
     headers: Vec<String>,
 
+    /// Accept invalid/self-signed TLS certificates (useful for local https://localhost dev servers)
+    #[arg(short = 'k', long)]
+    insecure: bool,
+
     /// Number of independent exploration sessions to run
     #[arg(long, default_value_t = 10)]
     runs: usize,
@@ -214,5 +218,6 @@ fn build_target(cli: &Cli) -> Result<Target> {
     Ok(Target::Http {
         url: raw_url.clone(),
         headers,
+        insecure: cli.insecure,
     })
 }

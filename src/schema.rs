@@ -24,6 +24,9 @@ impl ValuePool {
     }
 
     pub fn harvest_outcome(&mut self, outcome: &RpcOutcome) {
+        if outcome.is_tool_error() || outcome.error().is_some() {
+            return;
+        }
         let Some(result) = outcome.result() else {
             return;
         };
@@ -75,6 +78,18 @@ impl ValuePool {
                 }
             }
             Value::Object(map) => {
+                // If an object inside a named collection (e.g. `businesses: [{ slug: "..." }]`)
+                // has an identifier field (`id` or `slug`), also bind it under the singular
+                // parent name (`business`) so tools taking `business` pick it up automatically.
+                if let Some(parent) = field.and_then(singularize) {
+                    for id_key in ["slug", "id"] {
+                        if let Some(v) = map.get(id_key)
+                            && (v.is_string() || v.is_number())
+                        {
+                            self.push_field(&parent, v.clone());
+                        }
+                    }
+                }
                 for (k, v) in map {
                     self.harvest_value(Some(k), v, depth + 1);
                 }
@@ -145,6 +160,29 @@ fn normalize_key(key: &str) -> String {
         .filter(|c| c.is_ascii_alphanumeric())
         .map(|c| c.to_ascii_lowercase())
         .collect()
+}
+
+fn singularize(key: &str) -> Option<String> {
+    let norm = normalize_key(key);
+    if let Some(stem) = norm.strip_suffix("ies")
+        && stem.len() >= 2
+    {
+        return Some(format!("{stem}y"));
+    }
+    if let Some(stem) = norm.strip_suffix("es")
+        && (stem.ends_with('s')
+            || stem.ends_with('x')
+            || stem.ends_with("ch")
+            || stem.ends_with("sh"))
+    {
+        return Some(stem.to_string());
+    }
+    if let Some(stem) = norm.strip_suffix('s')
+        && stem.len() >= 2
+    {
+        return Some(stem.to_string());
+    }
+    None
 }
 
 fn value_matches_type(v: &Value, expected: &str) -> bool {
@@ -281,7 +319,7 @@ fn gen_value<R: Rng>(
     // Try reusing a harvested value from prior calls (stateful exploration!)
     if !boundary {
         if let Some(fname) = field_name
-            && rng.random_bool(0.55)
+            && rng.random_bool(0.75)
             && let Some(reused) = pool.pick_for_field(fname, ty, rng)
         {
             return reused;

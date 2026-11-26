@@ -409,6 +409,7 @@ fn base_config(url: String) -> RunConfig {
         target: Target::Http {
             url,
             headers: vec![],
+            insecure: false,
         },
         runs: 5,
         steps: 30,

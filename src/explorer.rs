@@ -100,29 +100,47 @@ pub async fn explore(cfg: &RunConfig) -> Result<ExplorationSummary> {
         let uris: Vec<String> = discovery.resources.iter().map(|r| r.uri.clone()).collect();
         pool.seed_resource_uris(&uris);
 
+        // Bootstrap pool with zero-required-arg read-only tools (e.g. `businesses`, `list_*`)
+        // so subsequent steps naturally discover valid live IDs and slugs with zero config.
+        let mut bootstrap_queue: Vec<Action> = tools
+            .iter()
+            .filter(|t| is_zero_arg_readonly(t))
+            .map(|t| Action::CallTool {
+                name: t.name.clone(),
+                arguments: json!({}),
+                input_kind: InputKind::Valid,
+            })
+            .collect();
+
         let mut trace: Vec<TraceEntry> = Vec::with_capacity(cfg.steps);
 
         for step_idx in 0..cfg.steps {
-            let action = pick_next_action(&tools, &discovery, &pool, &mut rng);
+            let action = if !bootstrap_queue.is_empty() {
+                bootstrap_queue.remove(0)
+            } else {
+                pick_next_action(&tools, &discovery, &pool, &mut rng)
+            };
             let outcome = client.execute(&action).await;
             total_steps += 1;
 
             if cfg.verbose {
+                let status_str = if let Some(err) = outcome.transport_error.as_deref() {
+                    err.to_string()
+                } else if let Some(code) = outcome.http_status.filter(|c| *c >= 400) {
+                    format!("http_{code}")
+                } else if outcome.error().is_some() {
+                    "rpc_error".to_string()
+                } else if outcome.is_tool_error() {
+                    "tool_error".to_string()
+                } else {
+                    "ok".to_string()
+                };
                 eprintln!(
                     "  [run {} step {}] {} -> {} ({}ms)",
                     run_idx + 1,
                     step_idx + 1,
                     action.short_label(),
-                    outcome
-                        .transport_error
-                        .as_deref()
-                        .unwrap_or(if outcome.error().is_some() {
-                            "rpc_error"
-                        } else if outcome.is_tool_error() {
-                            "tool_error"
-                        } else {
-                            "ok"
-                        }),
+                    status_str,
                     outcome.latency.as_millis()
                 );
             }
@@ -328,6 +346,23 @@ pub fn save_trace(path: &Path, trace: &SavedTrace) -> Result<()> {
     let json = serde_json::to_string_pretty(trace)?;
     std::fs::write(path, json)
         .with_context(|| format!("failed writing trace to {}", path.display()))
+}
+
+fn is_zero_arg_readonly(tool: &ToolDef) -> bool {
+    let read_only = tool
+        .annotations
+        .as_ref()
+        .and_then(|a| a.read_only_hint)
+        .unwrap_or(false);
+    if !read_only {
+        return false;
+    }
+    let has_required = tool
+        .input_schema
+        .get("required")
+        .and_then(Value::as_array)
+        .is_some_and(|a| !a.is_empty());
+    !has_required
 }
 
 fn filter_tools(tools: &[ToolDef], cfg: &RunConfig) -> Vec<ToolDef> {
