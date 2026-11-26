@@ -1,0 +1,18 @@
+[package]
+name = "blofeld"
+version = "0.1.0"
+edition = "2024"
+description = "Fast, zero-config property-based testing and autonomous fuzzing for MCP servers"
+license = "MIT"
+
+[dependencies]
+antithesis_sdk = { version = "0.4", default-features = false, features = ["full", "rand_v0_9"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+rand = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["full"] }
+url = "2"
