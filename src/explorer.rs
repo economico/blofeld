@@ -1,5 +1,5 @@
 // Copyright 2026 Economico, LLC
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 use crate::mcp::{Action, Discovery, InputKind, McpClient, Target, ToolDef};
 use crate::properties::{RuleSet, Violation, check_step};

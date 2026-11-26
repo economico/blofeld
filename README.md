@@ -96,4 +96,4 @@ Blofeld comes out of [Economico](https://economi.co/?utm_source=github&utm_mediu
 
 ## License
 
-Copyright 2026 Economico, LLC. Licensed under the [Apache License 2.0](LICENSE).
+Copyright (c) 2026 Economico, LLC. Licensed under the [MIT License](LICENSE).

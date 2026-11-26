@@ -1,5 +1,5 @@
 // Copyright 2026 Economico, LLC
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 use crate::mcp::{Action, Discovery, InputKind, RpcOutcome};
 use crate::schema::validate_against_schema;

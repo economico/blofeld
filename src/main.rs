@@ -1,5 +1,5 @@
 // Copyright 2026 Economico, LLC
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 use anyhow::{Result, anyhow};
 use blofeld::explorer::{RunConfig, SavedTrace, explore, parse_duration, replay_trace, save_trace};

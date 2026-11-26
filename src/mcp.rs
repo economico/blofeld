@@ -1,5 +1,5 @@
 // Copyright 2026 Economico, LLC
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 use anyhow::{Context, Result, anyhow};
 use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
