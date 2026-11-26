@@ -1,40 +1,53 @@
-# blofeld
+# ![Blofeld — property-based testing for MCP servers](assets/banner.png)
 
-Fast, zero-config property-based testing and autonomous state-space exploration for MCP servers—inspired by Antithesis's [Bombadil](https://github.com/antithesishq/bombadil), powered by [Hegel](https://hegel.dev) (`hegeltest` / native `libhegel`), and integrated with `antithesis_sdk`.
+Blofeld explores failures in [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers autonomously. Point it at an MCP server URL and it discovers the server's tools, resources, and prompts, generates schema-guided valid, boundary, and malformed calls, chains returned IDs across steps, checks protocol and custom invariants, and shrinks any failure down to a minimal replayable trace.
 
-## Quick Start
+Powered by [Hegel](https://hegel.dev) (`hegeltest` / native `libhegel`) for structured generation and shrinking, inspired by Antithesis's [Bombadil](https://github.com/antithesishq/bombadil), and integrated with `antithesis_sdk`.
+
+We use Blofeld at [Economico](https://economi.co/?utm_source=github&utm_medium=readme&utm_campaign=blofeld) to fuzz and verify our MCP server.
+
+## Try it
 
 Point `blofeld` at any Streamable HTTP MCP server URL:
 
-```bash
+```sh
 cargo run -- http://localhost:3000/mcp
 ```
 
 With auth headers, self-signed local HTTPS (`-k`), or read-only safety:
 
-```bash
+```sh
 blofeld https://localhost:8787/mcp -k -H "Authorization: Bearer $TOKEN" --read-only
 ```
 
 Or test a local stdio MCP server:
 
-```bash
+```sh
 blofeld --stdio node server.js
 ```
 
-## What It Checks Out of the Box
+Save and deterministically replay shrunk counterexamples:
 
-With zero configuration, `blofeld` connects, runs MCP discovery (`initialize`, `tools/list`, `resources/list`, `prompts/list`), bootstraps zero-arg read-only tools (such as `businesses` or `list_*`), and explores the server using Hegel's native Hypothesis engine (`libhegel`):
+```sh
+blofeld http://localhost:3000/mcp --save-trace failure.trace.json
+blofeld http://localhost:3000/mcp --replay failure.trace.json
+```
 
-- **Schema-guided generation & shrinking**: generates `Valid`, `Boundary`, and `Malformed` arguments from each tool's JSON Schema (including `format`s like `uuid`/`email`/`uri`/`date-time` and `pattern` regexes), chained via a cross-call `ValuePool`.
-- **Protocol & envelope safety**: valid JSON-RPC 2.0 responses on 2xx, matching IDs, `result` XOR `error`, valid error objects.
+## What it checks out of the box
+
+With zero configuration, `blofeld` runs MCP discovery (`initialize`, `tools/list`, `resources/list`, `prompts/list`), bootstraps zero-argument read-only tools (such as `businesses` or `list_*`) to seed live IDs, and explores stateful call sequences:
+
+- **Schema-guided generation & shrinking**: generates `Valid`, `Boundary`, and `Malformed` arguments from each tool's JSON Schema (including `format`s like `uuid`/`email`/`uri`/`date-time` and `pattern` regexes), chained via a cross-call `ValuePool` that binds collection IDs and slugs across steps.
+- **Protocol & envelope safety**: enforces valid JSON-RPC 2.0 envelopes on 2xx responses, matching IDs, `result` XOR `error`, and valid error objects, while allowing transport-level HTTP 4xx refusals.
 - **No crashes / 5xx / hangs**: catches transport drops, EOFs, timeouts, and HTTP 5xx errors.
-- **MCP contract conformance**: valid `content` blocks, `outputSchema` validation on `structuredContent`, and `resources/read` shape checks.
-- **Stdout hygiene**: flags stray non-JSON-RPC output on stdio servers.
-- **No internal stack-trace leaks**: detects raw panics and tracebacks across both 2xx and 4xx responses.
-- **Dual shrinking**: Hegel shrinks both the action trace and individual JSON argument payloads simultaneously, followed by symbolic-ID-remapping delta-debugging (`--save-trace` / `--replay`).
+- **MCP contract conformance**: validates `content` blocks, `outputSchema` conformance on `structuredContent`, and `resources/read` results.
+- **Stdout hygiene**: flags stray non-JSON-RPC bytes printed to stdout by stdio servers.
+- **No internal stack-trace leaks**: detects raw panics, tracebacks, and segfault signatures across both 2xx and 4xx responses.
+- **Dual shrinking**: Hegel shrinks both the action sequence and individual JSON argument payloads simultaneously, followed by symbolic-ID-remapping delta-debugging (`ddmin`) so stateful bugs shrink cleanly even when the server issues fresh UUIDs or sequential IDs.
 
-## Optional Declarative Rules (`--rules`)
+## Optional declarative rules (`--rules`)
+
+Add domain-specific invariants in YAML without writing code:
 
 ```yaml
 rules:
@@ -47,9 +60,20 @@ rules:
     valid_calls_succeed: true
 ```
 
-## Antithesis Stack Integration
+## Antithesis & Hegel stack
 
 `blofeld` combines `hegeltest` (native `libhegel`) and `antithesis_sdk`:
 
-- **Locally / in CI**: deterministic seeded exploration (`--seed`), targeted search toward richer harvested state, full Hypothesis + `ddmin` shrinking, and optional local assertion logging via `ANTITHESIS_SDK_LOCAL_OUTPUT`.
+- **Locally / in CI**: deterministic seeded exploration (`--seed`), targeted search toward richer harvested state, full Hypothesis + symbolic `ddmin` shrinking, and optional local assertion logging via `ANTITHESIS_SDK_LOCAL_OUTPUT`.
 - **Inside Antithesis** (`--antithesis` or `ANTITHESIS_OUTPUT_DIR` set): switches Hegel to `Backend::Urandom` (driving every draw from Antithesis's `/usr/lib/libvoidstar.so` fuzzer) and emits `assert_always!`, `assert_sometimes!`, and `lifecycle::setup_complete!` straight to Antithesis triage reports.
+- **Self-tested with Hegel**: `cargo test` runs both end-to-end MCP server integration tests and `#[hegel::test]` property tests of `blofeld`'s own generator, validator, SSE parser, envelope checker, and value pool.
+
+## Built by Economico
+
+[![Economico: the business context layer for founders and their agents](assets/economico.gif)](https://economi.co/?utm_source=github&utm_medium=readme&utm_campaign=blofeld)
+
+Blofeld comes out of [Economico](https://economi.co/?utm_source=github&utm_medium=readme&utm_campaign=blofeld), the business context layer for founders and their agents. Your customers, agreements, activity and money live in one structured record your own agents operate, with real books and evidence behind every answer.
+
+## License
+
+MIT License. See [LICENSE](LICENSE).
