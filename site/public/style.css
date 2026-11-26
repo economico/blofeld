@@ -645,10 +645,18 @@ p:last-child {
   background: var(--bg);
 }
 
+.footer-economico {
+  display: grid;
+  grid-template-columns: minmax(260px, 420px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-xl);
+  margin-block-end: var(--s-xl);
+}
+
 .economico-banner-link {
   display: block;
+  max-inline-size: 420px;
   border: 1px solid var(--ink);
-  margin-block-end: var(--s-lg);
   overflow: clip;
 }
 
@@ -677,7 +685,8 @@ p:last-child {
 
 @media (max-width: 820px) {
   .hero-grid,
-  .two-col {
+  .two-col,
+  .footer-economico {
     grid-template-columns: 1fr;
   }
 
