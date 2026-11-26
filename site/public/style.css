@@ -235,6 +235,7 @@ p:last-child {
   background: var(--surface-code);
   padding: 0.08em 0.32em;
   border: 1px solid var(--rule-soft);
+  white-space: nowrap;
 }
 
 /* Hero */
@@ -364,6 +365,11 @@ p:last-child {
 
 .codeblock--full {
   padding-inline-end: 1rem;
+}
+
+.codeblock--wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .copy-btn {
@@ -569,7 +575,8 @@ p:last-child {
 
 /* Accordion (native details/summary per modern-web-guidance) */
 .faq-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--s-sm);
 }
 
@@ -610,6 +617,7 @@ p:last-child {
   interpolate-size: allow-keywords;
   overflow: clip;
   contain: layout;
+  block-size: auto;
 }
 
 .faq-list details:not([open])::details-content {
