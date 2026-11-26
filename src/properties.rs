@@ -1,3 +1,6 @@
+// Copyright 2026 Economico, LLC
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::mcp::{Action, Discovery, InputKind, RpcOutcome};
 use crate::schema::validate_against_schema;
 use antithesis_sdk::{assert_always, assert_sometimes};

@@ -1,3 +1,6 @@
+// Copyright 2026 Economico, LLC
+// SPDX-License-Identifier: Apache-2.0
+
 interface Env {
   ASSETS: Fetcher;
 }

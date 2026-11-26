@@ -1,3 +1,6 @@
+// Copyright 2026 Economico, LLC
+// SPDX-License-Identifier: Apache-2.0
+
 use blofeld::mcp::{
     Action, Discovery, InputKind, RpcOutcome, Target, parse_sse_response, parse_token_str,
 };

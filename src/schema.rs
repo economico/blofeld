@@ -1,3 +1,6 @@
+// Copyright 2026 Economico, LLC
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::mcp::{InputKind, RpcOutcome};
 use hegel::TestCase;
 use hegel::extras::serde_json as hegel_json;

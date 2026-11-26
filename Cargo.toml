@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.86"
 description = "Fast, zero-config property-based testing and autonomous fuzzing for MCP servers"
+authors = ["Economico, LLC"]
 license = "Apache-2.0"
 repository = "https://github.com/economico/blofeld"
 homepage = "https://github.com/economico/blofeld"

@@ -1,3 +1,6 @@
+// Copyright 2026 Economico, LLC
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::mcp::{Action, Discovery, InputKind, McpClient, Target, ToolDef};
 use crate::properties::{RuleSet, Violation, check_step};
 use crate::schema::{ValuePool, extract_response_bindings, generate_tool_args, substitute_values};
