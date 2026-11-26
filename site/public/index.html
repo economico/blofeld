@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Blofeld — Property-based testing for MCP servers</title>
-  <meta name="description" content="Fast, zero-config property-based testing and autonomous fuzzing for Model Context Protocol (MCP) servers. Powered by Rust, Hegel, and the Antithesis SDK.">
+  <meta name="description" content="Fast, zero-config property-based testing and autonomous fuzzing for Model Context Protocol (MCP) servers. Built in Rust, powered by Hegel, and designed like Bombadil.">
   <link rel="canonical" href="https://blofeld.dev/">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 
@@ -48,7 +48,7 @@
     <section class="hero">
       <div class="container hero-grid">
         <div class="hero-copy">
-          <p class="eyebrow">Open-source MCP testing · Rust · Hegel · Antithesis</p>
+          <p class="eyebrow">Open-source MCP testing · Rust · Hegel · Bombadil-style</p>
           <h1>Autonomous fuzzing for MCP servers.</h1>
           <p class="lede">
             Point Blofeld at an MCP URL. It discovers every tool, resource, and prompt, chains returned IDs across calls, checks protocol and custom invariants, and shrinks any failure to a minimal replayable trace.
@@ -113,9 +113,9 @@ blofeld https://your-mcp-server.example.com/mcp</pre>
       <div class="container">
         <div class="section-head">
           <p class="eyebrow">Architecture</p>
-          <h2>Built for the Antithesis &amp; Hegel stack.</h2>
+          <h2>Built like Bombadil. Powered by Hegel.</h2>
           <p class="lede">
-            Designed to work like <a href="https://antithesishq.github.io/bombadil/">Bombadil</a> does for web and terminal UIs: point it at a live MCP server, explore autonomously, check invariants continuously, and shrink counterexamples—using <a href="https://hegel.dev">Hegel</a> and the <a href="https://antithesis.com">Antithesis</a> SDK underneath.
+            Designed to run the same way you use <a href="https://antithesishq.github.io/bombadil/">Bombadil</a> for web and terminal UIs: point it at a live MCP server, explore autonomously, check invariants continuously, and shrink counterexamples—powered by <a href="https://hegel.dev">Hegel</a> underneath.
           </p>
         </div>
 
@@ -137,10 +137,10 @@ blofeld https://your-mcp-server.example.com/mcp</pre>
           </article>
 
           <article class="card">
-            <span class="card-num">03 · Local, CI &amp; Antithesis</span>
+            <span class="card-num">03 · Local, CI &amp; Replay</span>
             <h3>Same binary everywhere</h3>
             <p>
-              Run locally with deterministic <code>--seed</code> and <code>--replay</code>, log assertions via <code>ANTITHESIS_SDK_LOCAL_OUTPUT</code>, or flip <code>--antithesis</code> to draw directly from <code>libvoidstar.so</code> and emit triage properties natively.
+              Run locally with deterministic <code>--seed</code> and <code>--replay</code>, save redacted counterexample traces for regression tests, or run inside deterministic simulation environments with live entropy and structured property logs.
             </p>
           </article>
         </div>

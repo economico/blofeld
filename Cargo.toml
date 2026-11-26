@@ -8,7 +8,7 @@ license = "Apache-2.0"
 repository = "https://github.com/economico/blofeld"
 homepage = "https://github.com/economico/blofeld"
 readme = "README.md"
-keywords = ["mcp", "testing", "fuzzing", "property-testing", "antithesis"]
+keywords = ["mcp", "testing", "fuzzing", "property-testing", "hegel"]
 categories = ["development-tools::testing", "command-line-utilities"]
 exclude = ["assets/*", ".github/*", "site/*"]
 

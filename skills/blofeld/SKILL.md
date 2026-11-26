@@ -1,11 +1,11 @@
 ---
 name: blofeld
-description: Fuzz and property-test Model Context Protocol (MCP) servers (Streamable HTTP or stdio) with blofeld. Use when testing an MCP server for stateful crashes, 5xx errors, schema mismatches, or JSON-RPC protocol violations; when shrinking or replaying a failing MCP trace; when writing YAML invariant rules for MCP tools; or when running MCP tests under Antithesis.
+description: Fuzz and property-test Model Context Protocol (MCP) servers (Streamable HTTP or stdio) with blofeld. Use when testing an MCP server for stateful crashes, 5xx errors, schema mismatches, or JSON-RPC protocol violations; when shrinking or replaying a failing MCP trace; or when writing YAML invariant rules for MCP tools.
 ---
 
 # Blofeld
 
-Blofeld is a Rust property-based testing CLI for MCP servers powered by Hegel (`libhegel`) and `antithesis_sdk`. Give it an MCP endpoint URL (or `--stdio <cmd>`), and it discovers tools, resources, and prompts, chains returned IDs across calls, checks built-in and custom invariants, and shrinks any violation to a minimal replayable trace.
+Blofeld is a Rust property-based testing CLI for MCP servers powered by Hegel (`libhegel`) and designed to work like Bombadil. Give it an MCP endpoint URL (or `--stdio <cmd>`), and it discovers tools, resources, and prompts, chains returned IDs across calls, checks built-in and custom invariants, and shrinks any violation to a minimal replayable trace.
 
 Run `blofeld --help` for the complete flag list.
 
@@ -77,7 +77,6 @@ rules:
 
 Each rule accepts `name` (required) and any combination of `tool` (optional filter), `never_contains`, `max_latency_ms`, and `valid_calls_succeed` (fails when a schema-valid call returns a JSON-RPC error or `isError: true`).
 
-### Antithesis integration
+### Simulation & structured assertions
 
-- Pass `--antithesis` (or set `ANTITHESIS_OUTPUT_DIR`) to drive Hegel's draws from Antithesis's fuzzer (`Backend::Urandom` / `libvoidstar.so`) and emit `antithesis_sdk` `assert_always!`, `assert_sometimes!`, and `lifecycle::setup_complete!` events directly into Antithesis triage reports.
-- Locally, set `ANTITHESIS_SDK_LOCAL_OUTPUT=/tmp/assertions.jsonl` to inspect emitted assertion logs.
+- Blofeld emits structured `always` / `sometimes` property events and supports external entropy (`Backend::Urandom`) when running inside deterministic simulation environments.

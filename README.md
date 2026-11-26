@@ -2,7 +2,7 @@
 
 Blofeld explores failures in [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers autonomously. Point it at an MCP server URL and it discovers the server's tools, resources, and prompts, generates schema-guided valid, boundary, and malformed calls, chains returned IDs across steps, checks protocol and custom invariants, and shrinks any failure down to a minimal replayable trace.
 
-Designed to run the same way you use [Bombadil](https://antithesishq.github.io/bombadil/) for web and terminal UIs—built for the [Antithesis](https://antithesis.com) and [Hegel](https://hegel.dev) stack (`hegeltest` / native `libhegel` + `antithesis_sdk`).
+Designed to run the same way you use [Bombadil](https://antithesishq.github.io/bombadil/) for web and terminal UIs—powered by [Hegel](https://hegel.dev) (`hegeltest` / native `libhegel`) for structured generation and shrinking.
 
 We use Blofeld at [Economico](https://economi.co/?utm_source=github&utm_medium=readme&utm_campaign=blofeld) to fuzz and verify our MCP server.
 
@@ -79,12 +79,12 @@ rules:
     valid_calls_succeed: true
 ```
 
-## Antithesis & Hegel stack
+## Hegel & Bombadil-style testing
 
-`blofeld` combines `hegeltest` (native `libhegel`) and `antithesis_sdk`:
+`blofeld` embeds `hegeltest` (native `libhegel`) in Rust:
 
-- **Locally / in CI**: deterministic seeded exploration (`--seed`), targeted search toward richer harvested state, full Hypothesis + symbolic `ddmin` shrinking, and optional local assertion logging via `ANTITHESIS_SDK_LOCAL_OUTPUT`.
-- **Inside Antithesis** (`--antithesis` or `ANTITHESIS_OUTPUT_DIR` set): switches Hegel to `Backend::Urandom` (driving every draw from Antithesis's `/usr/lib/libvoidstar.so` fuzzer) and emits `assert_always!`, `assert_sometimes!`, and `lifecycle::setup_complete!` straight to Antithesis triage reports.
+- **Locally / in CI**: deterministic seeded exploration (`--seed`), targeted search toward richer harvested state, full Hypothesis + symbolic `ddmin` shrinking, and replayable redacted traces (`--save-trace` / `--replay`).
+- **Deterministic simulation ready**: supports external fuzzer entropy (`Backend::Urandom`) and structured property assertions when run inside simulation environments.
 - **Self-tested with Hegel**: `cargo test` runs both end-to-end MCP server integration tests and `#[hegel::test]` property tests of `blofeld`'s own generator, validator, SSE parser, envelope checker, and value pool.
 
 ## Built by Economico
