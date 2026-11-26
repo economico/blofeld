@@ -468,6 +468,16 @@ async fn discovers_and_shrinks_three_step_stateful_bug() {
         "expected shrunk trace of 3 steps (create -> lock -> delete), got {:?}",
         fail.shrunk_actions
     );
+    // Verify Hegel also shrunk the JSON argument payload (e.g. create_item.name down to 1 char)
+    if let blofeld::mcp::Action::CallTool { arguments, .. } = &fail.shrunk_actions[0] {
+        let name = arguments.get("name").and_then(Value::as_str).unwrap_or("");
+        assert_eq!(
+            name.chars().count(),
+            1,
+            "expected Hegel to shrink create_item.name to 1 char, got {:?}",
+            name
+        );
+    }
 
     // Save and replay the shrunk trace to confirm deterministic reproduction
     let tmp = std::env::temp_dir().join("blofeld_test_trace.json");

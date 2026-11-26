@@ -1,14 +1,23 @@
 use crate::mcp::{Action, Discovery, InputKind, McpClient, Target, ToolDef};
 use crate::properties::{RuleSet, Violation, check_step};
-use crate::rng::ExplorerRng;
 use crate::schema::{ValuePool, extract_response_bindings, generate_tool_args, substitute_values};
 use antithesis_sdk::lifecycle;
 use anyhow::{Context, Result};
-use rand::Rng;
+use hegel::generators as gs;
+use hegel::{
+    Backend, Database, HealthCheck, Hegel, NondeterminismStrictness, Phase, Settings, TestCase,
+    Verbosity,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tokio::runtime::Handle;
+
+const STEP_SPAN_LABEL: u64 = 0xB10F_0001;
 
 #[derive(Debug, Clone)]
 pub struct RunConfig {
@@ -56,11 +65,26 @@ pub struct ExplorationSummary {
     pub failure: Option<FailureReport>,
 }
 
+#[derive(Debug, Clone)]
+struct TraceEntry {
+    action: Action,
+    produced: Vec<(String, Value)>,
+}
+
+#[derive(Debug, Clone)]
+struct CapturedFailure {
+    run_index: usize,
+    violation: Violation,
+    original_len: usize,
+    entries: Vec<TraceEntry>,
+    serialized_size: usize,
+    failing_response: Option<Value>,
+}
+
 pub async fn explore(cfg: &RunConfig) -> Result<ExplorationSummary> {
     let started = Instant::now();
-    let mut total_steps = 0usize;
 
-    // Probe discovery once up front so we fail fast on unreachable servers and signal setup_complete
+    // Probe discovery once up front so we fail fast on unreachable servers and signal setup_complete.
     let mut probe = McpClient::connect(&cfg.target, cfg.timeout).await?;
     let (initial_discovery, _) = probe.initialize_and_discover().await?;
     probe.close().await;
@@ -82,133 +106,238 @@ pub async fn explore(cfg: &RunConfig) -> Result<ExplorationSummary> {
         );
     }
 
-    for run_idx in 0..cfg.runs {
-        let run_seed = cfg
-            .seed
-            .wrapping_add((run_idx as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-        let mut rng = if cfg.antithesis_mode {
-            ExplorerRng::antithesis()
-        } else {
-            ExplorerRng::seeded(run_seed)
-        };
+    let cfg_owned = cfg.clone();
+    let handle = Handle::current();
+    let runs_counter = Arc::new(AtomicUsize::new(0));
+    let total_steps = Arc::new(AtomicUsize::new(0));
+    let captured: Arc<Mutex<Option<CapturedFailure>>> = Arc::new(Mutex::new(None));
 
-        let mut client = McpClient::connect(&cfg.target, cfg.timeout).await?;
-        let (discovery, _) = client.initialize_and_discover().await?;
-        let tools = filter_tools(&discovery.tools, cfg);
+    let runs_for_hegel = Arc::clone(&runs_counter);
+    let steps_for_hegel = Arc::clone(&total_steps);
+    let captured_for_hegel = Arc::clone(&captured);
+    let cfg_for_hegel = cfg_owned.clone();
 
-        let mut pool = ValuePool::default();
-        let uris: Vec<String> = discovery.resources.iter().map(|r| r.uri.clone()).collect();
-        pool.seed_resource_uris(&uris);
-
-        // Bootstrap pool with zero-required-arg read-only tools (e.g. `businesses`, `list_*`)
-        // so subsequent steps naturally discover valid live IDs and slugs with zero config.
-        let mut bootstrap_queue: Vec<Action> = tools
-            .iter()
-            .filter(|t| is_zero_arg_readonly(t))
-            .map(|t| Action::CallTool {
-                name: t.name.clone(),
-                arguments: json!({}),
-                input_kind: InputKind::Valid,
-            })
-            .collect();
-
-        let mut trace: Vec<TraceEntry> = Vec::with_capacity(cfg.steps);
-
-        for step_idx in 0..cfg.steps {
-            let action = if !bootstrap_queue.is_empty() {
-                bootstrap_queue.remove(0)
-            } else {
-                pick_next_action(&tools, &discovery, &pool, &mut rng)
-            };
-            let outcome = client.execute(&action).await;
-            total_steps += 1;
-
-            if cfg.verbose {
-                let status_str = if let Some(err) = outcome.transport_error.as_deref() {
-                    err.to_string()
-                } else if let Some(code) = outcome.http_status.filter(|c| *c >= 400) {
-                    format!("http_{code}")
-                } else if outcome.error().is_some() {
-                    "rpc_error".to_string()
-                } else if outcome.is_tool_error() {
-                    "tool_error".to_string()
-                } else {
-                    "ok".to_string()
-                };
-                eprintln!(
-                    "  [run {} step {}] {} -> {} ({}ms)",
-                    run_idx + 1,
-                    step_idx + 1,
-                    action.short_label(),
-                    status_str,
-                    outcome.latency.as_millis()
-                );
-            }
-
-            let violations = check_step(&action, &outcome, &discovery, &cfg.rules);
-            let produced = extract_response_bindings(&outcome);
-            trace.push(TraceEntry { action, produced });
-            pool.harvest_outcome(&outcome);
-
-            if let Some(violation) = violations.into_iter().next() {
-                let original_len = trace.len();
-                let failing_response = outcome.raw_response.clone();
-                client.close().await;
-
-                let shrunk_actions = if cfg.shrink && !cfg.antithesis_mode && trace.len() > 1 {
-                    shrink_trace(cfg, &trace, &violation.property).await
-                } else {
-                    trace.into_iter().map(|e| e.action).collect()
-                };
-
-                return Ok(ExplorationSummary {
-                    discovered_tools: initial_discovery.tools.len(),
-                    discovered_resources: initial_discovery.resources.len(),
-                    discovered_prompts: initial_discovery.prompts.len(),
-                    runs_completed: run_idx + 1,
-                    total_steps,
-                    elapsed: started.elapsed(),
-                    failure: Some(FailureReport {
-                        run_index: run_idx,
-                        seed: run_seed,
-                        violation,
-                        original_len,
-                        shrunk_actions,
-                        failing_response,
-                    }),
-                });
-            }
-        }
-
-        client.close().await;
+    let mut phases = vec![Phase::Generate, Phase::Target];
+    if cfg.shrink && !cfg.antithesis_mode {
+        phases.push(Phase::Shrink);
     }
+
+    let settings = Settings::new()
+        .test_cases(cfg.runs.max(1) as u64)
+        .seed(Some(cfg.seed))
+        .database(Database::Disabled)
+        .print_blob(false)
+        .verbosity(Verbosity::Quiet)
+        .nondeterminism_strictness(NondeterminismStrictness::Quiet)
+        .suppress_health_check(HealthCheck::all())
+        .backend(if cfg.antithesis_mode {
+            Backend::Urandom
+        } else {
+            Backend::Default
+        })
+        .phases(phases);
+
+    // Run Hegel's native Hypothesis engine (libhegel) on a blocking worker thread,
+    // driving async MCP I/O through the Tokio runtime handle.
+    tokio::task::spawn_blocking(move || {
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            Hegel::new(move |tc: TestCase| {
+                let run_idx = runs_for_hegel.fetch_add(1, Ordering::Relaxed);
+                let res = handle.block_on(run_single_episode(
+                    &cfg_for_hegel,
+                    &tc,
+                    run_idx,
+                    &steps_for_hegel,
+                ));
+
+                match res {
+                    Ok(None) => {}
+                    Ok(Some((violation, entries, failing_response))) => {
+                        let serialized_size: usize = entries
+                            .iter()
+                            .map(|e| {
+                                serde_json::to_string(&e.action)
+                                    .map(|s| s.len())
+                                    .unwrap_or(0)
+                            })
+                            .sum();
+
+                        let mut guard = captured_for_hegel.lock().unwrap();
+                        let should_replace = match guard.as_ref() {
+                            None => true,
+                            Some(prev) => {
+                                entries.len() < prev.entries.len()
+                                    || (entries.len() == prev.entries.len()
+                                        && serialized_size < prev.serialized_size)
+                            }
+                        };
+                        let original_len = guard
+                            .as_ref()
+                            .map(|p| p.original_len)
+                            .unwrap_or(entries.len());
+                        let first_run = guard.as_ref().map(|p| p.run_index).unwrap_or(run_idx);
+
+                        if should_replace {
+                            *guard = Some(CapturedFailure {
+                                run_index: first_run,
+                                violation: violation.clone(),
+                                original_len,
+                                entries,
+                                serialized_size,
+                                failing_response,
+                            });
+                        }
+                        drop(guard);
+
+                        // Signal libhegel that this test case triggered an interesting bug
+                        // so its shrinker minimizes both the action sequence and JSON arguments.
+                        panic!("blofeld:{}", violation.property);
+                    }
+                    Err(err) => {
+                        // Transient connect error on a fresh session: reject sample rather than
+                        // blaming the server unless probe failed up front.
+                        if cfg_for_hegel.verbose {
+                            eprintln!("  [run {}] session connect error: {err}", run_idx + 1);
+                        }
+                        tc.assume(false);
+                    }
+                }
+            })
+            .settings(settings)
+            .run();
+        }));
+    })
+    .await
+    .context("hegel exploration task panicked")?;
+
+    let captured_failure = captured.lock().unwrap().take();
+    let failure = match captured_failure {
+        None => None,
+        Some(fail) => {
+            // Polish with symbolic-ID-remapping ddmin as a fast safety net in case any
+            // residual prefix step can still be dropped after Hegel shrinks the payloads.
+            let shrunk_actions = if cfg.shrink && !cfg.antithesis_mode && fail.entries.len() > 1 {
+                shrink_trace(cfg, &fail.entries, &fail.violation.property).await
+            } else {
+                fail.entries.into_iter().map(|e| e.action).collect()
+            };
+
+            Some(FailureReport {
+                run_index: fail.run_index,
+                seed: cfg.seed,
+                violation: fail.violation,
+                original_len: fail.original_len,
+                shrunk_actions,
+                failing_response: fail.failing_response,
+            })
+        }
+    };
 
     Ok(ExplorationSummary {
         discovered_tools: initial_discovery.tools.len(),
         discovered_resources: initial_discovery.resources.len(),
         discovered_prompts: initial_discovery.prompts.len(),
-        runs_completed: cfg.runs,
-        total_steps,
+        runs_completed: runs_counter.load(Ordering::Relaxed).min(cfg.runs),
+        total_steps: total_steps.load(Ordering::Relaxed),
         elapsed: started.elapsed(),
-        failure: None,
+        failure,
     })
 }
 
-#[derive(Debug, Clone)]
-struct TraceEntry {
-    action: Action,
-    produced: Vec<(String, Value)>,
+async fn run_single_episode(
+    cfg: &RunConfig,
+    tc: &TestCase,
+    run_idx: usize,
+    total_steps: &AtomicUsize,
+) -> Result<Option<(Violation, Vec<TraceEntry>, Option<Value>)>> {
+    let mut client = McpClient::connect(&cfg.target, cfg.timeout).await?;
+    let (discovery, _) = client.initialize_and_discover().await?;
+    let tools = filter_tools(&discovery.tools, cfg);
+
+    let mut pool = ValuePool::default();
+    let uris: Vec<String> = discovery.resources.iter().map(|r| r.uri.clone()).collect();
+    pool.seed_resource_uris(&uris);
+
+    // Bootstrap zero-required-arg read-only tools (e.g. `businesses`) once per session,
+    // controlled by a shrinkable boolean so Hegel can omit bootstrap when not needed.
+    let mut bootstrap_queue: Vec<Action> = tools
+        .iter()
+        .filter(|t| is_zero_arg_readonly(t))
+        .map(|t| Action::CallTool {
+            name: t.name.clone(),
+            arguments: json!({}),
+            input_kind: InputKind::Valid,
+        })
+        .collect();
+
+    let max_steps = cfg.steps.max(1);
+    let mut trace: Vec<TraceEntry> = Vec::with_capacity(max_steps);
+
+    for step_idx in 0..max_steps {
+        // After the first step, let Hegel choose whether to stop early so shrinking
+        // naturally shortens traces.
+        if step_idx > 0 && !tc.draw_silent(gs::weighted_booleans(0.95)) {
+            break;
+        }
+
+        tc.start_span(STEP_SPAN_LABEL);
+        let action = if !bootstrap_queue.is_empty() && tc.draw_silent(gs::weighted_booleans(0.9)) {
+            bootstrap_queue.remove(0)
+        } else {
+            pick_next_action(&tools, &discovery, &pool, tc)
+        };
+        tc.stop_span(false);
+
+        let outcome = client.execute(&action).await;
+        total_steps.fetch_add(1, Ordering::Relaxed);
+
+        if cfg.verbose {
+            let status_str = if let Some(err) = outcome.transport_error.as_deref() {
+                err.to_string()
+            } else if let Some(code) = outcome.http_status.filter(|c| *c >= 400) {
+                format!("http_{code}")
+            } else if outcome.error().is_some() {
+                "rpc_error".to_string()
+            } else if outcome.is_tool_error() {
+                "tool_error".to_string()
+            } else {
+                "ok".to_string()
+            };
+            eprintln!(
+                "  [run {} step {}] {} -> {} ({}ms)",
+                run_idx + 1,
+                step_idx + 1,
+                action.short_label(),
+                status_str,
+                outcome.latency.as_millis()
+            );
+        }
+
+        let violations = check_step(&action, &outcome, &discovery, &cfg.rules);
+        let produced = extract_response_bindings(&outcome);
+        trace.push(TraceEntry { action, produced });
+        pool.harvest_outcome(&outcome);
+
+        if let Some(violation) = violations.into_iter().next() {
+            let failing_response = outcome.raw_response.clone();
+            client.close().await;
+            return Ok(Some((violation, trace, failing_response)));
+        }
+    }
+
+    // Guide Hegel's targeted search toward sessions that uncover richer server state.
+    tc.target_labelled(pool.total_values() as f64, "harvested_values");
+
+    client.close().await;
+    Ok(None)
 }
 
-/// Delta-debugging (`ddmin`) trace shrinker with symbolic response-value remapping:
-/// finds a minimal subsequence of actions that reproduces the same property violation
-/// even when the server issues fresh session-specific IDs (UUIDs, sequential IDs).
+/// Delta-debugging (`ddmin`) trace shrinker with symbolic response-value remapping.
 async fn shrink_trace(
     cfg: &RunConfig,
     entries: &[TraceEntry],
     target_property: &str,
 ) -> Vec<Action> {
-    // Fast path: check if the last action alone reproduces the violation (stateless bug).
     if let Some(last) = entries.last() {
         let single = vec![last.clone()];
         if let Some(resolved) = reproduces(cfg, &single, target_property).await {
@@ -391,18 +520,27 @@ fn filter_tools(tools: &[ToolDef], cfg: &RunConfig) -> Vec<ToolDef> {
         .collect()
 }
 
-fn pick_next_action<R: Rng>(
+fn pick_next_action(
     tools: &[ToolDef],
     discovery: &Discovery,
     pool: &ValuePool,
-    rng: &mut R,
+    tc: &TestCase,
 ) -> Action {
-    let roll: u8 = rng.random_range(0..100);
+    let roll: u8 = tc.draw_silent(gs::integers::<u8>().min_value(0).max_value(99));
 
     // 78% tool calls (if tools exist)
     if !tools.is_empty() && roll < 78 {
-        let tool = &tools[rng.random_range(0..tools.len())];
-        let kind_roll: u8 = rng.random_range(0..100);
+        let idx = if tools.len() <= 1 {
+            0
+        } else {
+            tc.draw_silent(
+                gs::integers::<usize>()
+                    .min_value(0)
+                    .max_value(tools.len() - 1),
+            )
+        };
+        let tool = &tools[idx];
+        let kind_roll: u8 = tc.draw_silent(gs::integers::<u8>().min_value(0).max_value(99));
         let input_kind = if kind_roll < 65 {
             InputKind::Valid
         } else if kind_roll < 85 {
@@ -410,7 +548,7 @@ fn pick_next_action<R: Rng>(
         } else {
             InputKind::Malformed
         };
-        let arguments = generate_tool_args(&tool.input_schema, pool, rng, input_kind);
+        let arguments = generate_tool_args(&tool.input_schema, pool, tc, input_kind);
         return Action::CallTool {
             name: tool.name.clone(),
             arguments,
@@ -420,19 +558,37 @@ fn pick_next_action<R: Rng>(
 
     // 10% resource reads (if resources exist)
     if !discovery.resources.is_empty() && roll < 88 {
-        let res = &discovery.resources[rng.random_range(0..discovery.resources.len())];
+        let idx = if discovery.resources.len() <= 1 {
+            0
+        } else {
+            tc.draw_silent(
+                gs::integers::<usize>()
+                    .min_value(0)
+                    .max_value(discovery.resources.len() - 1),
+            )
+        };
         return Action::ReadResource {
-            uri: res.uri.clone(),
+            uri: discovery.resources[idx].uri.clone(),
         };
     }
 
     // 6% prompt gets (if prompts exist)
     if !discovery.prompts.is_empty() && roll < 94 {
-        let p = &discovery.prompts[rng.random_range(0..discovery.prompts.len())];
+        let idx = if discovery.prompts.len() <= 1 {
+            0
+        } else {
+            tc.draw_silent(
+                gs::integers::<usize>()
+                    .min_value(0)
+                    .max_value(discovery.prompts.len() - 1),
+            )
+        };
+        let p = &discovery.prompts[idx];
         let mut args = serde_json::Map::new();
         for arg in &p.arguments {
-            if arg.required || rng.random_bool(0.5) {
-                args.insert(arg.name.clone(), json!("sample"));
+            if arg.required || tc.draw_silent(gs::booleans()) {
+                let s = tc.draw_silent(gs::text().max_size(16));
+                args.insert(arg.name.clone(), json!(s));
             }
         }
         return Action::GetPrompt {
@@ -441,8 +597,7 @@ fn pick_next_action<R: Rng>(
         };
     }
 
-    // Remaining: periodic tools/list consistency check or ping
-    if rng.random_bool(0.5) {
+    if tc.draw_silent(gs::booleans()) {
         Action::ListTools
     } else {
         Action::Ping

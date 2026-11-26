@@ -2,7 +2,6 @@ use anyhow::{Result, anyhow};
 use blofeld::explorer::{RunConfig, SavedTrace, explore, replay_trace, save_trace};
 use blofeld::mcp::Target;
 use blofeld::properties::RuleSet;
-use blofeld::rng::ExplorerRng;
 use clap::Parser;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -105,7 +104,7 @@ async fn run() -> Result<ExitCode> {
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(0x0B10_FE1D)
     });
-    let antithesis_mode = cli.antithesis || ExplorerRng::in_antithesis_env();
+    let antithesis_mode = cli.antithesis || std::env::var_os("ANTITHESIS_OUTPUT_DIR").is_some();
 
     let cfg = RunConfig {
         target: target.clone(),
