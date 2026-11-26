@@ -14,11 +14,15 @@ Point `blofeld` at any Streamable HTTP MCP server URL:
 cargo run -- http://localhost:3000/mcp
 ```
 
-With auth headers, self-signed local HTTPS (`-k`), or read-only safety:
+With authentication (`--token`, `BLOFELD_TOKEN`, or `--token-file` reading either a raw token or JSON `{ "accessToken" | "access_token" | "token" }`), self-signed local HTTPS (`-k`), or read-only safety:
 
 ```sh
-blofeld https://localhost:8787/mcp -k -H "Authorization: Bearer $TOKEN" --read-only
+blofeld https://localhost:8787/mcp -k --token "$TOKEN" --read-only
+blofeld https://localhost:8787/mcp -k --token-file .context/auth.json
+BLOFELD_TOKEN="$TOKEN" blofeld https://api.example.com/mcp
 ```
+
+Saved counterexample traces (`--save-trace`) automatically redact `Authorization`, `Cookie`, and API key/token headers so traces are safe to share or commit.
 
 Or test a local stdio MCP server:
 

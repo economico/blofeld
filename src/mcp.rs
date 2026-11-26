@@ -22,6 +22,47 @@ pub enum Target {
     },
 }
 
+const SENSITIVE_HEADERS: &[&str] = &[
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "x-api-key",
+    "api-key",
+];
+
+impl Target {
+    /// Return a copy safe to persist in trace files, with sensitive header values redacted.
+    pub fn redacted(&self) -> Self {
+        match self {
+            Self::Http {
+                url,
+                headers,
+                insecure,
+            } => Self::Http {
+                url: url.clone(),
+                headers: headers
+                    .iter()
+                    .map(|(k, v)| {
+                        let lower = k.to_ascii_lowercase();
+                        if SENSITIVE_HEADERS.contains(&lower.as_str())
+                            || lower.contains("token")
+                            || lower.contains("secret")
+                        {
+                            (k.clone(), "<REDACTED>".to_string())
+                        } else {
+                            (k.clone(), v.clone())
+                        }
+                    })
+                    .collect(),
+                insecure: *insecure,
+            },
+            Self::Stdio { command } => Self::Stdio {
+                command: command.clone(),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDef {
     pub name: String,
@@ -151,6 +192,7 @@ pub struct RpcOutcome {
     pub request_id: u64,
     pub latency: Duration,
     pub http_status: Option<u16>,
+    pub www_authenticate: Option<String>,
     pub raw_response: Option<Value>,
     pub transport_error: Option<String>,
     pub stdout_pollution: Vec<String>,
@@ -273,6 +315,15 @@ impl McpClient {
             .await;
         outcomes.push(init.clone());
 
+        if init.http_status == Some(401) {
+            let hint = match &init.www_authenticate {
+                Some(hdr) => format!(" (WWW-Authenticate: {hdr})"),
+                None => String::new(),
+            };
+            return Err(anyhow!(
+                "MCP server requires authentication (HTTP 401){hint}.\nObtain a bearer token and pass --token <TOKEN>, --token-file <PATH>, or BLOFELD_TOKEN."
+            ));
+        }
         if let Some(err) = &init.transport_error {
             return Err(anyhow!("MCP initialize failed: {err}"));
         }
@@ -378,6 +429,11 @@ impl McpClient {
                 match req.json(&payload).send().await {
                     Ok(resp) => {
                         let status = resp.status().as_u16();
+                        let www_authenticate = resp
+                            .headers()
+                            .get("www-authenticate")
+                            .and_then(|v| v.to_str().ok())
+                            .map(String::from);
                         if let Some(sid) = resp
                             .headers()
                             .get("mcp-session-id")
@@ -398,6 +454,7 @@ impl McpClient {
                                     request_id: id,
                                     latency: started.elapsed(),
                                     http_status: Some(status),
+                                    www_authenticate,
                                     raw_response: None,
                                     transport_error: Some(format!("failed reading HTTP body: {e}")),
                                     stdout_pollution: vec![],
@@ -423,6 +480,7 @@ impl McpClient {
                                 request_id: id,
                                 latency: started.elapsed(),
                                 http_status: Some(status),
+                                www_authenticate,
                                 raw_response: Some(val),
                                 transport_error: None,
                                 stdout_pollution: vec![],
@@ -431,6 +489,7 @@ impl McpClient {
                                 request_id: id,
                                 latency: started.elapsed(),
                                 http_status: Some(status),
+                                www_authenticate,
                                 raw_response: None,
                                 transport_error: Some(err),
                                 stdout_pollution: vec![],
@@ -441,6 +500,7 @@ impl McpClient {
                         request_id: id,
                         latency: started.elapsed(),
                         http_status: None,
+                        www_authenticate: None,
                         raw_response: None,
                         transport_error: Some(format!("HTTP request failed: {e}")),
                         stdout_pollution: vec![],
@@ -455,6 +515,7 @@ impl McpClient {
                             request_id: id,
                             latency: started.elapsed(),
                             http_status: None,
+                            www_authenticate: None,
                             raw_response: None,
                             transport_error: Some(format!("serialize error: {e}")),
                             stdout_pollution: vec![],
@@ -467,6 +528,7 @@ impl McpClient {
                         request_id: id,
                         latency: started.elapsed(),
                         http_status: None,
+                        www_authenticate: None,
                         raw_response: None,
                         transport_error: Some(format!("stdin write failed (server exited?): {e}")),
                         stdout_pollution: vec![],
@@ -483,6 +545,7 @@ impl McpClient {
                             request_id: id,
                             latency: started.elapsed(),
                             http_status: None,
+                            www_authenticate: None,
                             raw_response: None,
                             transport_error: Some(format!(
                                 "timed out after {}ms waiting for JSON-RPC response id={id}",
@@ -498,6 +561,7 @@ impl McpClient {
                                 request_id: id,
                                 latency: started.elapsed(),
                                 http_status: None,
+                                www_authenticate: None,
                                 raw_response: None,
                                 transport_error: Some(
                                     "stdio server closed stdout unexpectedly (EOF / crash)"
@@ -521,6 +585,7 @@ impl McpClient {
                                         request_id: id,
                                         latency: started.elapsed(),
                                         http_status: None,
+                                        www_authenticate: None,
                                         raw_response: Some(val),
                                         transport_error: None,
                                         stdout_pollution: pollution,
@@ -536,6 +601,7 @@ impl McpClient {
                                 request_id: id,
                                 latency: started.elapsed(),
                                 http_status: None,
+                                www_authenticate: None,
                                 raw_response: None,
                                 transport_error: Some(format!("stdout read error: {e}")),
                                 stdout_pollution: pollution,
@@ -546,6 +612,7 @@ impl McpClient {
                                 request_id: id,
                                 latency: started.elapsed(),
                                 http_status: None,
+                                www_authenticate: None,
                                 raw_response: None,
                                 transport_error: Some(format!(
                                     "timed out after {}ms waiting for JSON-RPC response id={id}",
@@ -650,6 +717,30 @@ pub fn parse_sse_response(body: &str, expected_id: u64) -> std::result::Result<V
             truncate(body, 200)
         )
     })
+}
+
+/// Parse a bearer token from either a raw text token or a JSON auth file
+/// containing `accessToken`, `access_token`, or `token`.
+pub fn parse_token_str(raw: &str) -> Result<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("token file is empty"));
+    }
+    if trimmed.starts_with('{')
+        && let Ok(Value::Object(map)) = serde_json::from_str::<Value>(trimmed)
+    {
+        for key in ["accessToken", "access_token", "token"] {
+            if let Some(tok) = map.get(key).and_then(Value::as_str)
+                && !tok.trim().is_empty()
+            {
+                return Ok(tok.trim().to_string());
+            }
+        }
+        return Err(anyhow!(
+            "JSON token file did not contain a non-empty 'accessToken', 'access_token', or 'token' field"
+        ));
+    }
+    Ok(trimmed.to_string())
 }
 
 fn truncate(s: &str, max: usize) -> String {

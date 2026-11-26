@@ -1,4 +1,6 @@
-use blofeld::mcp::{Action, Discovery, InputKind, RpcOutcome, parse_sse_response};
+use blofeld::mcp::{
+    Action, Discovery, InputKind, RpcOutcome, Target, parse_sse_response, parse_token_str,
+};
 use blofeld::properties::{RuleSet, check_step};
 use blofeld::schema::{
     ValuePool, extract_response_bindings, generate_tool_args, substitute_values,
@@ -203,6 +205,7 @@ fn invalid_jsonrpc_envelopes_are_always_flagged(tc: TestCase) {
         request_id: req_id,
         latency: Duration::from_millis(1),
         http_status: Some(200),
+        www_authenticate: None,
         raw_response: Some(bad_envelope),
         transport_error: None,
         stdout_pollution: vec![],
@@ -246,6 +249,7 @@ fn value_pool_never_harvests_from_error_outcomes(tc: TestCase) {
         request_id: 1,
         latency: Duration::from_millis(1),
         http_status: Some(200),
+        www_authenticate: None,
         raw_response: Some(raw),
         transport_error: None,
         stdout_pollution: vec![],
@@ -272,6 +276,7 @@ fn response_bindings_extract_nested_ids_from_text_and_structured_content(tc: Tes
         request_id: 1,
         latency: Duration::from_millis(1),
         http_status: Some(200),
+        www_authenticate: None,
         raw_response: Some(json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -300,4 +305,54 @@ fn response_bindings_extract_nested_ids_from_text_and_structured_content(tc: Tes
     let mut pool = ValuePool::default();
     pool.harvest_outcome(&outcome);
     assert!(!pool.is_empty());
+}
+
+#[hegel::test]
+fn parse_token_supports_raw_and_json_auth_files(tc: TestCase) {
+    let tok = tc.draw(
+        gs::text()
+            .min_size(1)
+            .max_size(64)
+            .min_codepoint(0x21)
+            .max_codepoint(0x7E),
+    );
+    tc.assume(!tok.starts_with('{'));
+
+    // Raw text token with surrounding whitespace
+    assert_eq!(parse_token_str(&format!("  {tok}\n")).unwrap(), tok);
+
+    // JSON auth files with accessToken / access_token / token
+    let keys = ["accessToken", "access_token", "token"];
+    let key = keys[tc.draw(gs::integers::<usize>().min_value(0).max_value(2))];
+    let json_doc = json!({ key: tok, "expiresIn": 3600 }).to_string();
+    assert_eq!(parse_token_str(&json_doc).unwrap(), tok);
+}
+
+#[hegel::test]
+fn target_redacted_strips_sensitive_headers_and_keeps_safe_ones(tc: TestCase) {
+    let secret = tc.draw(gs::text().min_size(4).max_size(32));
+    let safe_val = tc.draw(gs::text().min_size(1).max_size(24));
+
+    let target = Target::Http {
+        url: "https://example.com/mcp".into(),
+        headers: vec![
+            ("Authorization".into(), format!("Bearer {secret}")),
+            ("X-API-Key".into(), secret.clone()),
+            ("Cookie".into(), format!("session={secret}")),
+            ("X-Custom-Token".into(), secret.clone()),
+            ("X-Request-Id".into(), safe_val.clone()),
+        ],
+        insecure: false,
+    };
+
+    let Target::Http { headers, .. } = target.redacted() else {
+        unreachable!()
+    };
+    for (k, v) in &headers {
+        if k == "X-Request-Id" {
+            assert_eq!(v, &safe_val);
+        } else {
+            assert_eq!(v, "<REDACTED>", "header {k} was not redacted");
+        }
+    }
 }

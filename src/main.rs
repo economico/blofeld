@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use blofeld::explorer::{RunConfig, SavedTrace, explore, replay_trace, save_trace};
-use blofeld::mcp::Target;
+use blofeld::mcp::{Target, parse_token_str};
 use blofeld::properties::RuleSet;
 use clap::Parser;
 use std::path::PathBuf;
@@ -18,7 +18,15 @@ struct Cli {
     #[arg(long, num_args = 1.., value_name = "CMD")]
     stdio: Option<Vec<String>>,
 
-    /// Extra HTTP headers for Streamable HTTP requests, e.g. -H "Authorization: Bearer ..."
+    /// Bearer token for authenticated MCP servers (sets `Authorization: Bearer <TOKEN>`)
+    #[arg(long, env = "BLOFELD_TOKEN", hide_env_values = true)]
+    token: Option<String>,
+
+    /// Path to a plain-text token file or JSON auth file (`accessToken` / `access_token` / `token`)
+    #[arg(long, value_name = "PATH", conflicts_with = "token")]
+    token_file: Option<PathBuf>,
+
+    /// Extra HTTP headers for Streamable HTTP requests, e.g. -H "X-API-Key: ..."
     #[arg(short = 'H', long = "header", value_name = "KEY: VALUE")]
     headers: Vec<String>,
 
@@ -174,7 +182,7 @@ async fn run() -> Result<ExitCode> {
             }
             if let Some(path) = &cli.save_trace {
                 let saved = SavedTrace {
-                    target,
+                    target: target.redacted(),
                     seed: fail.seed,
                     violation: fail.violation.clone(),
                     original_steps: fail.original_len,
@@ -207,7 +215,10 @@ fn build_target(cli: &Cli) -> Result<Target> {
             parsed.scheme()
         ));
     }
-    let mut headers = Vec::with_capacity(cli.headers.len());
+    let mut headers = Vec::with_capacity(cli.headers.len() + 1);
+    if let Some(tok) = resolve_token(cli)? {
+        headers.push(("Authorization".to_string(), format!("Bearer {tok}")));
+    }
     for h in &cli.headers {
         let (k, v) = h
             .split_once(':')
@@ -219,4 +230,19 @@ fn build_target(cli: &Cli) -> Result<Target> {
         headers,
         insecure: cli.insecure,
     })
+}
+
+fn resolve_token(cli: &Cli) -> Result<Option<String>> {
+    if let Some(path) = &cli.token_file {
+        let raw = std::fs::read_to_string(path)
+            .map_err(|e| anyhow!("failed reading token file {}: {e}", path.display()))?;
+        return Ok(Some(parse_token_str(&raw)?));
+    }
+    if let Some(tok) = &cli.token {
+        let trimmed = tok.trim();
+        if !trimmed.is_empty() {
+            return Ok(Some(trimmed.to_string()));
+        }
+    }
+    Ok(None)
 }
