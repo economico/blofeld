@@ -95,4 +95,4 @@ Blofeld comes out of [Economico](https://economi.co/?utm_source=github&utm_mediu
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE).
