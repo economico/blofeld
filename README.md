@@ -48,9 +48,9 @@ Install it into your project with the [skills](https://skills.sh) CLI:
 npx skills add economico/blofeld
 ```
 
-Without installing anything, point your agent at the repo:
+Without installing anything, point your agent at [blofeld.dev/skill.md](https://blofeld.dev/skill.md):
 
-> Read `skills/blofeld/SKILL.md` (or https://github.com/economico/blofeld/blob/main/skills/blofeld/SKILL.md) and follow it. Start a local isolated instance of our MCP server, obtain a bearer token into a temp auth file, run a Blofeld campaign of at least 15 runs and 40 steps with `--save-trace`, and report any failing property with its shrunk counterexample and replay command.
+> Read https://blofeld.dev/skill.md (or `skills/blofeld/SKILL.md`) and follow it. Start a local isolated instance of our MCP server, obtain a bearer token into a temp auth file, run a Blofeld campaign of at least 15 runs and 40 steps with `--save-trace`, and report any failing property with its shrunk counterexample and replay command.
 
 ## What it checks out of the box
 
