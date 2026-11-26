@@ -414,8 +414,9 @@ fn base_config(url: String) -> RunConfig {
             headers: vec![],
             insecure: false,
         },
-        runs: 5,
+        runs: Some(5),
         steps: 30,
+        time_limit: None,
         seed: 42,
         timeout: Duration::from_secs(2),
         rules: RuleSet::default(),
@@ -456,7 +457,7 @@ async fn sse_transport_passes() {
 async fn discovers_and_shrinks_three_step_stateful_bug() {
     let url = spawn_test_mcp_server(ServerBug::StatefulDeleteLockedCrash).await;
     let mut cfg = base_config(url.clone());
-    cfg.runs = 10;
+    cfg.runs = Some(10);
     cfg.steps = 40;
     cfg.seed = 7;
 
@@ -507,7 +508,7 @@ async fn discovers_and_shrinks_three_step_stateful_bug() {
 async fn catches_output_schema_violation_and_shrinks_to_one_step() {
     let url = spawn_test_mcp_server(ServerBug::OutputSchemaMismatch).await;
     let mut cfg = base_config(url);
-    cfg.runs = 5;
+    cfg.runs = Some(5);
     cfg.steps = 25;
 
     let summary = explore(&cfg).await.unwrap();
@@ -538,4 +539,23 @@ async fn catches_yaml_rule_violation() {
         .expect("blofeld should catch custom YAML rule violation");
     assert_eq!(fail.violation.property, "rule:no-secret-leak");
     assert_eq!(fail.shrunk_actions.len(), 1);
+}
+
+#[tokio::test]
+async fn time_limit_explores_until_budget_and_passes() {
+    let url = spawn_test_mcp_server(ServerBug::None).await;
+    let mut cfg = base_config(url);
+    cfg.runs = None;
+    cfg.time_limit = Some(Duration::from_millis(250));
+    cfg.steps = 15;
+
+    let summary = explore(&cfg).await.unwrap();
+    assert!(summary.failure.is_none());
+    assert!(summary.runs_completed >= 1);
+    assert!(summary.total_steps >= 1);
+    assert!(
+        summary.elapsed >= Duration::from_millis(200) && summary.elapsed < Duration::from_secs(3),
+        "expected elapsed near 250ms, got {:?}",
+        summary.elapsed
+    );
 }

@@ -13,6 +13,7 @@ Install from [crates.io](https://crates.io/crates/blofeld) and point `blofeld` a
 ```sh
 cargo install blofeld
 blofeld http://localhost:3000/mcp
+blofeld --time-limit 5m http://localhost:3000/mcp
 ```
 
 With authentication (`--token`, `BLOFELD_TOKEN`, or `--token-file` reading either a raw token or JSON `{ "accessToken" | "access_token" | "token" }`), self-signed local HTTPS (`-k`), or read-only safety:

@@ -1,6 +1,7 @@
 // Copyright 2026 Economico, LLC
 // SPDX-License-Identifier: Apache-2.0
 
+use blofeld::explorer::parse_duration;
 use blofeld::mcp::{
     Action, Discovery, InputKind, RpcOutcome, Target, parse_sse_response, parse_token_str,
 };
@@ -358,4 +359,30 @@ fn target_redacted_strips_sensitive_headers_and_keeps_safe_ones(tc: TestCase) {
             assert_eq!(v, "<REDACTED>", "header {k} was not redacted");
         }
     }
+}
+
+#[hegel::test]
+fn parse_duration_handles_all_units_and_rejects_invalid(tc: TestCase) {
+    let units: &[(&str, u64)] = &[
+        ("ms", 1),
+        ("s", 1_000),
+        ("m", 60_000),
+        ("h", 3_600_000),
+        ("d", 86_400_000),
+    ];
+    let idx = tc.draw(
+        gs::integers::<usize>()
+            .min_value(0)
+            .max_value(units.len() - 1),
+    );
+    let (suffix, mult_ms) = units[idx];
+    let n = tc.draw(gs::integers::<u64>().min_value(1).max_value(1_000));
+
+    let parsed = parse_duration(&format!("{n}{suffix}")).unwrap();
+    assert_eq!(parsed, Duration::from_millis(n * mult_ms));
+
+    assert!(parse_duration("").is_err());
+    assert!(parse_duration("0s").is_err());
+    assert!(parse_duration("42").is_err());
+    assert!(parse_duration("10w").is_err());
 }

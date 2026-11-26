@@ -20,9 +20,9 @@ Run `blofeld --help` for the complete flag list.
 3. **Run an exploration campaign.**
    ```sh
    blofeld https://localhost:8787/mcp -k --token-file auth.json \
-     --runs 15 --steps 40 --save-trace blofeld.trace.json
+     --time-limit 2m --save-trace blofeld.trace.json
    ```
-   Pass `-v` when inspecting live tool calls and latencies, or `--rules rules.yaml` to enforce project-specific invariants. Done when the campaign either exits `0` (`PASS`) or exits `1` (`FAIL`) with a shrunk counterexample and saved trace.
+   Or budget by run count (`--runs 15 --steps 40`). Pass `-v` when inspecting live tool calls and latencies, or `--rules rules.yaml` to enforce project-specific invariants. Done when the campaign either exits `0` (`PASS`) or exits `1` (`FAIL`) with a shrunk counterexample and saved trace.
 4. **Confirm the failure replays red.**
    ```sh
    blofeld https://localhost:8787/mcp -k --token-file auth.json \

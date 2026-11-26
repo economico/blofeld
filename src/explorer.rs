@@ -25,8 +25,11 @@ const STEP_SPAN_LABEL: u64 = 0xB10F_0001;
 #[derive(Debug, Clone)]
 pub struct RunConfig {
     pub target: Target,
-    pub runs: usize,
+    /// Maximum number of exploration runs (`None` means unlimited until `time_limit` expires).
+    pub runs: Option<usize>,
     pub steps: usize,
+    /// Optional wall-clock exploration budget (e.g. `--time-limit 5m`).
+    pub time_limit: Option<Duration>,
     pub seed: u64,
     pub timeout: Duration,
     pub rules: RuleSet,
@@ -36,6 +39,40 @@ pub struct RunConfig {
     pub shrink: bool,
     pub antithesis_mode: bool,
     pub verbose: bool,
+}
+
+/// Parse a Bombadil-style duration string like `500ms`, `30s`, `5m`, `1h`, or `1d`.
+pub fn parse_duration(raw: &str) -> Result<Duration> {
+    let s = raw.trim();
+    if s.is_empty() {
+        anyhow::bail!("duration cannot be empty; expected e.g. 500ms, 30s, 5m, 1h, or 1d");
+    }
+    let (num_str, mult_ms): (&str, u64) = if let Some(v) = s.strip_suffix("ms") {
+        (v, 1)
+    } else if let Some(v) = s.strip_suffix('s') {
+        (v, 1_000)
+    } else if let Some(v) = s.strip_suffix('m') {
+        (v, 60_000)
+    } else if let Some(v) = s.strip_suffix('h') {
+        (v, 3_600_000)
+    } else if let Some(v) = s.strip_suffix('d') {
+        (v, 86_400_000)
+    } else {
+        anyhow::bail!(
+            "invalid duration '{raw}': include a unit suffix (ms, s, m, h, or d), e.g. 30s or 5m"
+        );
+    };
+    let n: u64 = num_str
+        .trim()
+        .parse()
+        .with_context(|| format!("invalid duration number in '{raw}'"))?;
+    if n == 0 {
+        anyhow::bail!("duration must be greater than zero");
+    }
+    let total_ms = n
+        .checked_mul(mult_ms)
+        .ok_or_else(|| anyhow::anyhow!("duration '{raw}' overflows"))?;
+    Ok(Duration::from_millis(total_ms))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,109 +146,144 @@ pub async fn explore(cfg: &RunConfig) -> Result<ExplorationSummary> {
         );
     }
 
-    let cfg_owned = cfg.clone();
-    let handle = Handle::current();
+    let deadline = cfg.time_limit.map(|limit| started + limit);
+    let max_runs = cfg.runs.unwrap_or(usize::MAX);
     let runs_counter = Arc::new(AtomicUsize::new(0));
     let total_steps = Arc::new(AtomicUsize::new(0));
     let captured: Arc<Mutex<Option<CapturedFailure>>> = Arc::new(Mutex::new(None));
-
-    let runs_for_hegel = Arc::clone(&runs_counter);
-    let steps_for_hegel = Arc::clone(&total_steps);
-    let captured_for_hegel = Arc::clone(&captured);
-    let cfg_for_hegel = cfg_owned.clone();
 
     let mut phases = vec![Phase::Generate, Phase::Target];
     if cfg.shrink && !cfg.antithesis_mode {
         phases.push(Phase::Shrink);
     }
 
-    let settings = Settings::new()
-        .test_cases(cfg.runs.max(1) as u64)
-        .seed(Some(cfg.seed))
-        .database(Database::Disabled)
-        .print_blob(false)
-        .verbosity(Verbosity::Quiet)
-        .nondeterminism_strictness(NondeterminismStrictness::Quiet)
-        .suppress_health_check(HealthCheck::all())
-        .backend(if cfg.antithesis_mode {
-            Backend::Urandom
+    let mut batch_idx: u64 = 0;
+    while runs_counter.load(Ordering::Relaxed) < max_runs
+        && deadline.is_none_or(|d| Instant::now() < d)
+    {
+        let remaining = max_runs.saturating_sub(runs_counter.load(Ordering::Relaxed));
+        if remaining == 0 {
+            break;
+        }
+        // When running under a wall-clock time limit, chunk Hegel into small batches so
+        // expiration is checked cleanly between batches without abandoning a huge run budget.
+        let batch_cases = if deadline.is_some() {
+            remaining.min(10)
         } else {
-            Backend::Default
-        })
-        .phases(phases);
+            remaining
+        };
+        let batch_seed = cfg
+            .seed
+            .wrapping_add(batch_idx.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        batch_idx += 1;
 
-    // Run Hegel's native Hypothesis engine (libhegel) on a blocking worker thread,
-    // driving async MCP I/O through the Tokio runtime handle.
-    tokio::task::spawn_blocking(move || {
-        let _ = catch_unwind(AssertUnwindSafe(|| {
-            Hegel::new(move |tc: TestCase| {
-                let run_idx = runs_for_hegel.fetch_add(1, Ordering::Relaxed);
-                let res = handle.block_on(run_single_episode(
-                    &cfg_for_hegel,
-                    &tc,
-                    run_idx,
-                    &steps_for_hegel,
-                ));
+        let handle = Handle::current();
+        let runs_for_hegel = Arc::clone(&runs_counter);
+        let steps_for_hegel = Arc::clone(&total_steps);
+        let captured_for_hegel = Arc::clone(&captured);
+        let cfg_for_hegel = cfg.clone();
 
-                match res {
-                    Ok(None) => {}
-                    Ok(Some((violation, entries, failing_response))) => {
-                        let serialized_size: usize = entries
-                            .iter()
-                            .map(|e| {
-                                serde_json::to_string(&e.action)
-                                    .map(|s| s.len())
-                                    .unwrap_or(0)
-                            })
-                            .sum();
-
-                        let mut guard = captured_for_hegel.lock().unwrap();
-                        let should_replace = match guard.as_ref() {
-                            None => true,
-                            Some(prev) => {
-                                entries.len() < prev.entries.len()
-                                    || (entries.len() == prev.entries.len()
-                                        && serialized_size < prev.serialized_size)
-                            }
-                        };
-                        let original_len = guard
-                            .as_ref()
-                            .map(|p| p.original_len)
-                            .unwrap_or(entries.len());
-                        let first_run = guard.as_ref().map(|p| p.run_index).unwrap_or(run_idx);
-
-                        if should_replace {
-                            *guard = Some(CapturedFailure {
-                                run_index: first_run,
-                                violation: violation.clone(),
-                                original_len,
-                                entries,
-                                serialized_size,
-                                failing_response,
-                            });
-                        }
-                        drop(guard);
-
-                        // Signal libhegel that this test case triggered an interesting bug
-                        // so its shrinker minimizes both the action sequence and JSON arguments.
-                        panic!("blofeld:{}", violation.property);
-                    }
-                    Err(err) => {
-                        // Transient connect error on a fresh session: reject sample rather than
-                        // blaming the server unless probe failed up front.
-                        if cfg_for_hegel.verbose {
-                            eprintln!("  [run {}] session connect error: {err}", run_idx + 1);
-                        }
-                        tc.assume(false);
-                    }
-                }
+        let settings = Settings::new()
+            .test_cases(batch_cases.max(1) as u64)
+            .seed(Some(batch_seed))
+            .database(Database::Disabled)
+            .print_blob(false)
+            .verbosity(Verbosity::Quiet)
+            .nondeterminism_strictness(NondeterminismStrictness::Quiet)
+            .suppress_health_check(HealthCheck::all())
+            .backend(if cfg.antithesis_mode {
+                Backend::Urandom
+            } else {
+                Backend::Default
             })
-            .settings(settings)
-            .run();
-        }));
-    })
-    .await
-    .context("hegel exploration task panicked")?;
+            .phases(phases.clone());
+
+        // Run Hegel's native Hypothesis engine (libhegel) on a blocking worker thread,
+        // driving async MCP I/O through the Tokio runtime handle.
+        tokio::task::spawn_blocking(move || {
+            let _ = catch_unwind(AssertUnwindSafe(|| {
+                Hegel::new(move |tc: TestCase| {
+                    // If time limit expired and we aren't actively shrinking a found failure,
+                    // return immediately so this batch finishes promptly without failing.
+                    if deadline.is_some_and(|d| Instant::now() >= d)
+                        && captured_for_hegel.lock().unwrap().is_none()
+                    {
+                        return;
+                    }
+
+                    let run_idx = runs_for_hegel.fetch_add(1, Ordering::Relaxed);
+                    let shrinking = captured_for_hegel.lock().unwrap().is_some();
+                    let step_deadline = if shrinking { None } else { deadline };
+                    let res = handle.block_on(run_single_episode(
+                        &cfg_for_hegel,
+                        &tc,
+                        run_idx,
+                        &steps_for_hegel,
+                        step_deadline,
+                    ));
+
+                    match res {
+                        Ok(None) => {}
+                        Ok(Some((violation, entries, failing_response))) => {
+                            let serialized_size: usize = entries
+                                .iter()
+                                .map(|e| {
+                                    serde_json::to_string(&e.action)
+                                        .map(|s| s.len())
+                                        .unwrap_or(0)
+                                })
+                                .sum();
+
+                            let mut guard = captured_for_hegel.lock().unwrap();
+                            let should_replace = match guard.as_ref() {
+                                None => true,
+                                Some(prev) => {
+                                    entries.len() < prev.entries.len()
+                                        || (entries.len() == prev.entries.len()
+                                            && serialized_size < prev.serialized_size)
+                                }
+                            };
+                            let original_len = guard
+                                .as_ref()
+                                .map(|p| p.original_len)
+                                .unwrap_or(entries.len());
+                            let first_run = guard.as_ref().map(|p| p.run_index).unwrap_or(run_idx);
+
+                            if should_replace {
+                                *guard = Some(CapturedFailure {
+                                    run_index: first_run,
+                                    violation: violation.clone(),
+                                    original_len,
+                                    entries,
+                                    serialized_size,
+                                    failing_response,
+                                });
+                            }
+                            drop(guard);
+
+                            // Signal libhegel that this test case triggered an interesting bug
+                            // so its shrinker minimizes both the action sequence and JSON arguments.
+                            panic!("blofeld:{}", violation.property);
+                        }
+                        Err(err) => {
+                            if cfg_for_hegel.verbose {
+                                eprintln!("  [run {}] session connect error: {err}", run_idx + 1);
+                            }
+                            tc.assume(false);
+                        }
+                    }
+                })
+                .settings(settings)
+                .run();
+            }));
+        })
+        .await
+        .context("hegel exploration task panicked")?;
+
+        if captured.lock().unwrap().is_some() {
+            break;
+        }
+    }
 
     let captured_failure = captured.lock().unwrap().take();
     let failure = match captured_failure {
@@ -240,7 +312,7 @@ pub async fn explore(cfg: &RunConfig) -> Result<ExplorationSummary> {
         discovered_tools: initial_discovery.tools.len(),
         discovered_resources: initial_discovery.resources.len(),
         discovered_prompts: initial_discovery.prompts.len(),
-        runs_completed: runs_counter.load(Ordering::Relaxed).min(cfg.runs),
+        runs_completed: runs_counter.load(Ordering::Relaxed).min(max_runs),
         total_steps: total_steps.load(Ordering::Relaxed),
         elapsed: started.elapsed(),
         failure,
@@ -252,6 +324,7 @@ async fn run_single_episode(
     tc: &TestCase,
     run_idx: usize,
     total_steps: &AtomicUsize,
+    deadline: Option<Instant>,
 ) -> Result<Option<(Violation, Vec<TraceEntry>, Option<Value>)>> {
     let mut client = McpClient::connect(&cfg.target, cfg.timeout).await?;
     let (discovery, _) = client.initialize_and_discover().await?;
@@ -277,6 +350,9 @@ async fn run_single_episode(
     let mut trace: Vec<TraceEntry> = Vec::with_capacity(max_steps);
 
     for step_idx in 0..max_steps {
+        if deadline.is_some_and(|d| Instant::now() >= d) {
+            break;
+        }
         // After the first step, let Hegel choose whether to stop early so shrinking
         // naturally shortens traces.
         if step_idx > 0 && !tc.draw_silent(gs::weighted_booleans(0.95)) {

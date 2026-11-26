@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::{Result, anyhow};
-use blofeld::explorer::{RunConfig, SavedTrace, explore, replay_trace, save_trace};
+use blofeld::explorer::{RunConfig, SavedTrace, explore, parse_duration, replay_trace, save_trace};
 use blofeld::mcp::{Target, parse_token_str};
 use blofeld::properties::RuleSet;
 use clap::Parser;
@@ -29,7 +29,7 @@ struct Cli {
     #[arg(long, value_name = "PATH", conflicts_with = "token")]
     token_file: Option<PathBuf>,
 
-    /// Extra HTTP headers for Streamable HTTP requests, e.g. -H "X-API-Key: ..."
+    /// Extra HTTP headers for Streamable HTTP requests, e.g. -H "X-API-Key: ..." or --header KEY=VALUE
     #[arg(short = 'H', long = "header", value_name = "KEY: VALUE")]
     headers: Vec<String>,
 
@@ -37,9 +37,13 @@ struct Cli {
     #[arg(short = 'k', long)]
     insecure: bool,
 
-    /// Number of independent exploration sessions to run
-    #[arg(long, default_value_t = 10)]
-    runs: usize,
+    /// Maximum time to explore before exiting (e.g. 30s, 5m, 1h, 1d; unlimited runs unless --runs is also set)
+    #[arg(long, value_name = "DURATION")]
+    time_limit: Option<String>,
+
+    /// Number of independent exploration sessions to run (defaults to 10 unless --time-limit is set)
+    #[arg(long)]
+    runs: Option<usize>,
 
     /// Maximum MCP actions per exploration session
     #[arg(long, default_value_t = 40)]
@@ -70,11 +74,11 @@ struct Cli {
     exclude_tools: Vec<String>,
 
     /// Replay a saved counterexample trace JSON file instead of fuzzing
-    #[arg(long)]
+    #[arg(long, visible_alias = "reproduce")]
     replay: Option<PathBuf>,
 
     /// Path to write the shrunk counterexample trace JSON on failure
-    #[arg(long)]
+    #[arg(long, visible_alias = "output-path")]
     save_trace: Option<PathBuf>,
 
     /// Disable trace shrinking on failure
@@ -117,10 +121,21 @@ async fn run() -> Result<ExitCode> {
     });
     let antithesis_mode = cli.antithesis || std::env::var_os("ANTITHESIS_OUTPUT_DIR").is_some();
 
+    let time_limit = match &cli.time_limit {
+        Some(raw) => Some(parse_duration(raw)?),
+        None => None,
+    };
+    let runs = match (cli.runs, time_limit) {
+        (Some(n), _) => Some(n),
+        (None, Some(_)) => None,
+        (None, None) => Some(10),
+    };
+
     let cfg = RunConfig {
         target: target.clone(),
-        runs: cli.runs,
+        runs,
         steps: cli.steps,
+        time_limit,
         seed,
         timeout: Duration::from_millis(cli.timeout_ms),
         rules,
@@ -225,7 +240,8 @@ fn build_target(cli: &Cli) -> Result<Target> {
     for h in &cli.headers {
         let (k, v) = h
             .split_once(':')
-            .ok_or_else(|| anyhow!("invalid header '{h}', expected 'Key: Value'"))?;
+            .or_else(|| h.split_once('='))
+            .ok_or_else(|| anyhow!("invalid header '{h}', expected 'Key: Value' or 'KEY=VALUE'"))?;
         headers.push((k.trim().to_string(), v.trim().to_string()));
     }
     Ok(Target::Http {
