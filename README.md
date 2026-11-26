@@ -37,6 +37,20 @@ blofeld http://localhost:3000/mcp --save-trace failure.trace.json
 blofeld http://localhost:3000/mcp --replay failure.trace.json
 ```
 
+## Use it with your coding agent
+
+Blofeld ships an [agent skill](skills/blofeld/SKILL.md) that teaches coding agents such as Claude Code, Codex, and Cursor how to fuzz an MCP server, handle authentication cleanly, write YAML invariant rules, and lock in shrunk regressions.
+
+Install it into your project with the [skills](https://skills.sh) CLI:
+
+```sh
+npx skills add economico/blofeld
+```
+
+Without installing anything, point your agent at the repo:
+
+> Read `skills/blofeld/SKILL.md` (or https://github.com/economico/blofeld/blob/main/skills/blofeld/SKILL.md) and follow it. Start a local isolated instance of our MCP server, obtain a bearer token into a temp auth file, run a Blofeld campaign of at least 15 runs and 40 steps with `--save-trace`, and report any failing property with its shrunk counterexample and replay command.
+
 ## What it checks out of the box
 
 With zero configuration, `blofeld` runs MCP discovery (`initialize`, `tools/list`, `resources/list`, `prompts/list`), bootstraps zero-argument read-only tools (such as `businesses` or `list_*`) to seed live IDs, and explores stateful call sequences:
