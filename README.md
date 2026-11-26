@@ -2,7 +2,7 @@
 
 Blofeld explores failures in [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers autonomously. Point it at an MCP server URL and it discovers the server's tools, resources, and prompts, generates schema-guided valid, boundary, and malformed calls, chains returned IDs across steps, checks protocol and custom invariants, and shrinks any failure down to a minimal replayable trace.
 
-Powered by [Hegel](https://hegel.dev) (`hegeltest` / native `libhegel`) for structured generation and shrinking, inspired by Antithesis's [Bombadil](https://github.com/antithesishq/bombadil), and integrated with `antithesis_sdk`.
+Designed to run the same way you use [Bombadil](https://antithesishq.github.io/bombadil/) for web and terminal UIs—built for the [Antithesis](https://antithesis.com) and [Hegel](https://hegel.dev) stack (`hegeltest` / native `libhegel` + `antithesis_sdk`).
 
 We use Blofeld at [Economico](https://economi.co/?utm_source=github&utm_medium=readme&utm_campaign=blofeld) to fuzz and verify our MCP server.
 
