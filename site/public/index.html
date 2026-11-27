@@ -36,8 +36,9 @@
       </a>
       <nav class="site-nav" aria-label="Primary">
         <a href="#quickstart">Quick start</a>
+        <a href="#how-it-works">How it works</a>
         <a href="#invariants">Invariants</a>
-        <a href="#rules">Auth &amp; rules</a>
+        <a href="#rules">Specs &amp; rules</a>
         <a href="#agent-skill">Agent skill</a>
         <a href="https://github.com/economico/blofeld">GitHub &#8599;</a>
         <a class="nav-cta" href="/skill.md">/skill.md</a>
@@ -81,31 +82,67 @@ blofeld https://your-mcp-server.example.com/mcp</pre>
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" id="how-it-works">
       <div class="container">
         <div class="section-head">
-          <p class="eyebrow">Minimal counterexamples</p>
-          <h2>Finds stateful bugs. Shrinks the trace and the payload.</h2>
+          <p class="eyebrow">Live walkthrough</p>
+          <h2>Watch how Blofeld works across four modes.</h2>
           <p class="lede">
-            Designed to run the same way you use <a href="https://antithesishq.github.io/bombadil/">Bombadil</a> for UIs—and powered by <a href="https://hegel.dev">Hegel</a>'s native Rust engine (<code>libhegel</code>)—Blofeld reduces chaotic 40-step tool sessions down to the exact minimal reproducer, even when your server issues fresh UUIDs or sequential IDs every run.
+            Start with one URL for zero-config discovery and shrinking, or add a YAML spec for shadow state machines, read-only staging guards, and adversarial attacks. Switch modes or step frame-by-frame below.
           </p>
         </div>
 
-        <div class="codeblock-wrap codeblock-wrap--dark has-header">
-          <div class="codeblock-header">
-            <span>blofeld http://localhost:3000/mcp --save-trace failure.trace.json</span>
-            <span>exit 1</span>
+        <div class="demo-shell" data-demo-root>
+          <div class="demo-bar">
+            <div class="spec-tablist demo-tablist" role="tablist" focusgroup="tablist nomemory" aria-label="Blofeld usage modes">
+              <button class="spec-tab" type="button" role="tab" id="demo-tab-zero" data-demo-mode="zero" aria-selected="true" focusgroupstart tabindex="0">01 · Zero-config</button>
+              <button class="spec-tab" type="button" role="tab" id="demo-tab-stateful" data-demo-mode="stateful" aria-selected="false" tabindex="-1">02 · State machine</button>
+              <button class="spec-tab" type="button" role="tab" id="demo-tab-readonly" data-demo-mode="readonly" aria-selected="false" tabindex="-1">03 · Read-only</button>
+              <button class="spec-tab" type="button" role="tab" id="demo-tab-adversarial" data-demo-mode="adversarial" aria-selected="false" tabindex="-1">04 · Adversarial</button>
+            </div>
+            <div class="demo-controls" aria-label="Animation playback controls">
+              <button class="demo-btn" type="button" data-demo-toggle>Pause</button>
+              <button class="demo-btn" type="button" data-demo-step>Step</button>
+              <button class="demo-btn" type="button" data-demo-restart>Replay</button>
+            </div>
           </div>
-          <pre class="codeblock codeblock--full"><span class="tok-fail">FAIL</span>  property 'no_http_5xx' violated on run 1 (seed=7)
-      server returned HTTP 500 on tools/call(delete_item, Valid, {"id":"item-1"})
 
-<span class="tok-pink">Minimal counterexample (3 step(s), shrunk from 28):</span>
-  1. tools/call(create_item, Valid, {"name":"a"})
-  2. tools/call(lock_item,   Valid, {"id":"item-1"})
-  3. tools/call(delete_item, Valid, {"id":"item-1"})
+          <div class="demo-stage" role="tabpanel" aria-labelledby="demo-tab-zero" data-demo-stage>
+            <div class="demo-stage-head">
+              <code class="demo-cli" data-demo-cli>$ blofeld http://localhost:3000/mcp --save-trace failure.trace.json</code>
+              <div class="demo-stage-meta">
+                <span class="demo-step-label" data-demo-counter>Step 1 / 5</span>
+                <button class="demo-jump" type="button" data-demo-jump hidden>View YAML spec &#8595;</button>
+              </div>
+            </div>
 
-<span class="tok-dim">Saved redacted counterexample trace to failure.trace.json</span>
-<span class="tok-dim">Replay deterministically: blofeld http://localhost:3000/mcp --replay failure.trace.json</span></pre>
+            <div class="demo-progress" aria-hidden="true">
+              <div class="demo-progress-fill" data-demo-progress></div>
+            </div>
+
+            <div class="demo-grid">
+              <div class="demo-terminal">
+                <div class="demo-pane-label">
+                  <span>MCP wire &amp; engine trace</span>
+                  <span class="demo-badge" data-demo-badge>EXPLORING</span>
+                </div>
+                <ol class="demo-log" data-demo-log></ol>
+              </div>
+
+              <div class="demo-inspector">
+                <div class="demo-pane-label demo-pane-label--light">
+                  <span data-demo-visual-title>Live ValuePool &amp; Hegel shrinker</span>
+                  <span class="demo-mode-pill" data-demo-visual-tag>Zero config</span>
+                </div>
+                <div class="demo-visual" data-demo-visual></div>
+              </div>
+            </div>
+
+            <div class="demo-footer">
+              <p class="demo-caption" data-demo-caption></p>
+              <div class="demo-dots" role="group" aria-label="Jump to animation step" data-demo-dots></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -201,40 +238,356 @@ blofeld https://your-mcp-server.example.com/mcp</pre>
     </section>
 
     <section class="section" id="rules">
-      <div class="container two-col">
-        <div class="panel">
-          <p class="eyebrow">Authentication</p>
-          <h3>Agent-friendly token handling</h3>
-          <p>
-            Keep login outside the fuzzer. Pass a token directly, via environment variable, or straight from an OAuth login JSON file (<code>accessToken</code>, <code>access_token</code>, or <code>token</code>).
-          </p>
-          <div class="codeblock-wrap">
-            <pre class="codeblock" id="auth-cmd">blofeld https://localhost:8787/mcp -k \
-  --token-file .context/auth.json \
-  --read-only</pre>
-            <button class="copy-btn" type="button" data-copy-target="auth-cmd" aria-label="Copy auth example">Copy</button>
-          </div>
-          <p>
-            Saved traces automatically redact <code>Authorization</code>, <code>Cookie</code>, and API key/token headers so counterexamples are safe to share or commit.
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">Declarative YAML · CEL</p>
+          <h2>State machines, read probes &amp; adversarial fuzzing.</h2>
+          <p class="lede">
+            Start with zero config, or pass <code>--spec</code> / <code>--rules</code> to check domain invariants in YAML—evaluated in pure Rust with <a href="https://cel.dev">CEL</a>. Every section is optional: begin with simple rules, or model full stateful workflows and let Blofeld try to break them.
           </p>
         </div>
 
-        <div class="panel">
-          <p class="eyebrow">Declarative YAML</p>
-          <h3>Custom rules with <code>--rules</code></h3>
-          <p>
-            Layer project-specific invariants on top of the built-in protocol checks without writing Rust.
-          </p>
-          <div class="codeblock-wrap">
-            <pre class="codeblock" id="rules-yaml">rules:
+        <ol class="step-flow" aria-label="How Blofeld evaluates a declarative spec on each step">
+          <li>
+            <span class="card-num">01 · Generate</span>
+            <h3>Drive valid &amp; hostile calls</h3>
+            <p>Draws from <code>actions:</code>, schema fuzzing, or <code>--adversarial</code> attacks (cross-state calls, nested mutations, replays).</p>
+          </li>
+          <li>
+            <span class="card-num">02 · Assert rules</span>
+            <h3>Check response invariants</h3>
+            <p>Evaluates <code>never_contains</code>, <code>max_latency_ms</code>, <code>valid_calls_succeed</code>, and CEL <code>when:</code> / <code>assert:</code> guards.</p>
+          </li>
+          <li>
+            <span class="card-num">03 · Update model</span>
+            <h3>Advance shadow state</h3>
+            <p>Runs matching <code>transitions:</code> to verify postconditions and update or delete keys in episode <code>state</code>.</p>
+          </li>
+          <li>
+            <span class="card-num">04 · Probe server</span>
+            <h3>Cross-check live reality</h3>
+            <p>Calls read-only <code>probes:</code> (<code>after: mutating</code> or <code>every_step</code>) to prove server state matches your model.</p>
+          </li>
+        </ol>
+
+        <div class="spec-tabs" data-spec-tabs>
+          <div class="spec-tablist" role="tablist" focusgroup="tablist nomemory" aria-label="Blofeld YAML spec examples">
+            <button class="spec-tab" type="button" role="tab" id="tab-stateful" aria-selected="true" focusgroupstart tabindex="0">State machine + probe</button>
+            <button class="spec-tab" type="button" role="tab" id="tab-simple" aria-selected="false" tabindex="-1">Simple rules</button>
+            <button class="spec-tab" type="button" role="tab" id="tab-readonly" aria-selected="false" tabindex="-1">Read-only invariants</button>
+            <button class="spec-tab" type="button" role="tab" id="tab-adversarial" aria-selected="false" tabindex="-1">Adversarial breaking</button>
+          </div>
+
+          <div class="spec-panels">
+            <div class="spec-panel" role="tabpanel" aria-labelledby="tab-stateful">
+              <div class="tab-panel-inner">
+                <div class="spec-meta">
+                  <p>
+                    Tracks created, locked, and deleted items in shadow <code>state</code>, probes <code>list_items</code> after every mutating call to catch ghost deletes, and asserts locked items reject deletion.
+                  </p>
+                  <code class="spec-cmd">blofeld http://localhost:3000/mcp --spec items.yaml</code>
+                </div>
+                <div class="spec-diagram-strip">
+                  <svg class="spec-diagram-svg" viewBox="0 0 660 112" role="img" aria-label="Item state machine: none creates open, open locks to locked or deletes to deleted; Blofeld tests forbidden delete_item from locked and probes list_items after every mutation">
+                    <defs>
+                      <marker id="spec-arr-ink" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1 L 7 4 L 0 7 z" fill="#000000"/>
+                      </marker>
+                      <marker id="spec-arr-red" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1 L 7 4 L 0 7 z" fill="#D32F2F"/>
+                      </marker>
+                    </defs>
+                    <g class="viz-svg-node">
+                      <circle cx="30" cy="56" r="14"/>
+                      <text x="30" y="60" text-anchor="middle">∅</text>
+                    </g>
+                    <line x1="44" y1="56" x2="112" y2="56" stroke="#000000" stroke-width="1.5" marker-end="url(#spec-arr-ink)"/>
+                    <text class="viz-svg-edge-label" x="78" y="48" text-anchor="middle">create_item</text>
+                    <g class="viz-svg-node">
+                      <rect x="116" y="40" width="84" height="32"/>
+                      <text x="158" y="60" text-anchor="middle">open</text>
+                    </g>
+                    <line x1="200" y1="48" x2="294" y2="28" stroke="#000000" stroke-width="1.5" marker-end="url(#spec-arr-ink)"/>
+                    <text class="viz-svg-edge-label" x="244" y="29" text-anchor="middle">lock_item</text>
+                    <line x1="200" y1="64" x2="294" y2="84" stroke="#000000" stroke-width="1.5" marker-end="url(#spec-arr-ink)"/>
+                    <text class="viz-svg-edge-label" x="244" y="92" text-anchor="middle">delete_item</text>
+                    <g class="viz-svg-node viz-svg-node--active">
+                      <rect x="298" y="12" width="96" height="32"/>
+                      <text x="346" y="32" text-anchor="middle">locked</text>
+                    </g>
+                    <g class="viz-svg-node">
+                      <rect x="298" y="68" width="96" height="32"/>
+                      <text x="346" y="88" text-anchor="middle">deleted</text>
+                    </g>
+                    <path d="M 394 28 C 432 28, 432 84, 394 84" fill="none" stroke="#D32F2F" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#spec-arr-red)"/>
+                    <text class="viz-svg-attack-label is-firing" x="434" y="53" text-anchor="start">delete_item (must fail: !ok)</text>
+                    <text class="viz-svg-sublabel" x="434" y="68" text-anchor="start">+ probe list_items on mutations</text>
+                  </svg>
+                  <div class="spec-diagram-legend">
+                    <span><i class="legend-solid"></i> Valid <code>transitions:</code></span>
+                    <span><i class="legend-dashed"></i> Forbidden transition Blofeld attempts</span>
+                  </div>
+                </div>
+                <div class="codeblock-wrap">
+                  <pre class="codeblock" id="rules-yaml" data-spec-yaml>state:
+  items: {}
+  count: 0
+
+init:
+  - name: seed-count
+    call: { tool: list_items, arguments: {} }
+    update:
+      count: "size(res.items)"
+
+transitions:
+  - name: item-created
+    tool: create_item
+    when: "ok"
+    assert: "has(res.id) &amp;&amp; !(res.id in state.items)"
+    update:
+      "items[res.id]": "'open'"
+      count: "state.count + 1"
+  - name: item-locked
+    tool: lock_item
+    when: "ok"
+    update:
+      "items[args.id]": "'locked'"
+  - name: item-deleted
+    tool: delete_item
+    when: "ok"
+    delete: ["items[args.id]"]
+    update:
+      count: "state.count - 1"
+
+probes:
+  - name: list-matches-model
+    after: mutating
+    call: { tool: list_items, arguments: {} }
+    assert: "ok &amp;&amp; size(res.items) == state.count"
+
+actions:
+  - tool: lock_item
+    when: "'open' in values(state.items)"
+    args: { id: "pick_key_where(state.items, 'open')" }
+  - tool: delete_item
+    when: "size(state.items) &gt; 0"
+    args: { id: "pick_key(state.items)" }
+
+rules:
   - name: no-sql-errors
     never_contains: "SQLITE_ERROR"
-  - name: fast-reads
+  - name: locked-item-cannot-be-deleted
+    tool: delete_item
+    when: "args.id in state.items &amp;&amp; state.items[args.id] == 'locked'"
+    assert: "!ok"</pre>
+                  <button class="copy-btn" type="button" data-copy-target="rules-yaml" aria-label="Copy state machine YAML spec">Copy</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="spec-panel" role="tabpanel" aria-labelledby="tab-simple" hidden="until-found">
+              <div class="tab-panel-inner">
+                <div class="spec-meta">
+                  <p>
+                    No state machine required: enforce latency SLAs, block raw database errors, guarantee schema-valid calls succeed, and assert domain facts on responses with CEL.
+                  </p>
+                  <code class="spec-cmd">blofeld http://localhost:3000/mcp --rules rules.yaml</code>
+                </div>
+                <div class="codeblock-wrap">
+                  <pre class="codeblock" id="spec-simple-yaml" data-spec-yaml>rules:
+  - name: no-sql-errors
+    never_contains: "SQLITE_ERROR"
+  - name: fast-tools
     max_latency_ms: 1500
-  - name: businesses-always-succeeds
-    tool: businesses
-    valid_calls_succeed: true</pre>
-            <button class="copy-btn" type="button" data-copy-target="rules-yaml" aria-label="Copy YAML rules example">Copy</button>
+  - name: search-always-works
+    tool: search
+    valid_calls_succeed: true
+  - name: positive-invoice-totals
+    tool: get_invoice
+    when: "ok"
+    assert: "res.total &gt;= 0 &amp;&amp; has(res.currency)"</pre>
+                  <button class="copy-btn" type="button" data-copy-target="spec-simple-yaml" aria-label="Copy simple rules YAML spec">Copy</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="spec-panel" role="tabpanel" aria-labelledby="tab-readonly" hidden="until-found">
+              <div class="tab-panel-inner">
+                <div class="spec-meta">
+                  <p>
+                    Safe for staging or production with <code>--read-only</code>: seeds a live tenant and event cursor in <code>init:</code>, then proves after every step that read-only calls never append events and books stay balanced.
+                  </p>
+                  <code class="spec-cmd">blofeld https://api.example.com/mcp --read-only --spec readonly.yaml</code>
+                </div>
+                <div class="codeblock-wrap">
+                  <pre class="codeblock" id="spec-readonly-yaml" data-spec-yaml>state:
+  business: ""
+  event_head: 0
+
+init:
+  - name: discover-business
+    call: { tool: businesses, arguments: {} }
+    assert: "ok &amp;&amp; size(res.businesses) &gt; 0"
+    update:
+      business: "res.businesses[0].slug"
+  - name: capture-event-head
+    call:
+      tool: events_list
+      arguments: { business: "state.business", limit: 1 }
+    assert: "ok"
+    update:
+      event_head: "size(res.events) &gt; 0 ? res.events[0].seq : 0"
+
+probes:
+  - name: reads-never-append-events
+    after: every_step
+    call:
+      tool: events_list
+      arguments: { business: "state.business", limit: 1 }
+    assert: "ok &amp;&amp; (size(res.events) &gt; 0 ? res.events[0].seq : 0) == state.event_head"
+
+rules:
+  - name: balance-sheet-balances
+    tool: reports_balance_sheet
+    when: "ok"
+    assert: "res.assets == res.liabilities + res.equity"</pre>
+                  <button class="copy-btn" type="button" data-copy-target="spec-readonly-yaml" aria-label="Copy read-only invariants YAML spec">Copy</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="spec-panel" role="tabpanel" aria-labelledby="tab-adversarial" hidden="until-found">
+              <div class="tab-panel-inner">
+                <div class="spec-meta">
+                  <p>
+                    Even with <code>actions_only: true</code>, setting <code>adversarial_rate: 0.2</code> (or <code>--adversarial</code>) makes Blofeld bypass <code>when:</code> preconditions, mutate nested fields, and replay prior steps to catch broken guards and duplicate writes.
+                  </p>
+                  <code class="spec-cmd">blofeld http://localhost:3000/mcp --spec orders.yaml --adversarial</code>
+                </div>
+                <div class="spec-diagram-strip">
+                  <svg class="spec-diagram-svg" viewBox="0 0 640 120" role="img" aria-label="Order state machine showing open transitioning to cancelled or shipped, with red dashed adversarial attacks: cross-state ship_order and cancel_order, nested payload mutation on create_order, and step replay">
+                    <defs>
+                      <marker id="spec-arr-ink2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1 L 7 4 L 0 7 z" fill="#000000"/>
+                      </marker>
+                      <marker id="spec-arr-red2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1 L 7 4 L 0 7 z" fill="#D32F2F"/>
+                      </marker>
+                    </defs>
+                    <g class="viz-svg-node">
+                      <circle cx="30" cy="64" r="14"/>
+                      <text x="30" y="68" text-anchor="middle">∅</text>
+                    </g>
+                    <line x1="44" y1="64" x2="128" y2="64" stroke="#000000" stroke-width="1.5" marker-end="url(#spec-arr-ink2)"/>
+                    <text class="viz-svg-edge-label" x="86" y="56" text-anchor="middle">create_order</text>
+                    <path d="M 70 46 C 62 16, 110 16, 102 46" fill="none" stroke="#D32F2F" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#spec-arr-red2)"/>
+                    <text class="viz-svg-attack-label is-firing" x="86" y="14" text-anchor="middle">replay key</text>
+                    <line x1="86" y1="102" x2="86" y2="70" stroke="#D32F2F" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#spec-arr-red2)"/>
+                    <text class="viz-svg-attack-label is-firing" x="86" y="114" text-anchor="middle">mutate args</text>
+                    <g class="viz-svg-node">
+                      <rect x="132" y="48" width="84" height="32"/>
+                      <text x="174" y="68" text-anchor="middle">open</text>
+                    </g>
+                    <line x1="216" y1="56" x2="310" y2="34" stroke="#000000" stroke-width="1.5" marker-end="url(#spec-arr-ink2)"/>
+                    <text class="viz-svg-edge-label" x="260" y="34" text-anchor="middle">cancel_order</text>
+                    <line x1="216" y1="72" x2="310" y2="94" stroke="#000000" stroke-width="1.5" marker-end="url(#spec-arr-ink2)"/>
+                    <text class="viz-svg-edge-label" x="260" y="102" text-anchor="middle">ship_order</text>
+                    <g class="viz-svg-node viz-svg-node--active">
+                      <rect x="314" y="16" width="98" height="32"/>
+                      <text x="363" y="36" text-anchor="middle">cancelled</text>
+                    </g>
+                    <g class="viz-svg-node">
+                      <rect x="314" y="78" width="98" height="32"/>
+                      <text x="363" y="98" text-anchor="middle">shipped</text>
+                    </g>
+                    <path d="M 412 28 C 452 28, 452 94, 412 94" fill="none" stroke="#D32F2F" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#spec-arr-red2)"/>
+                    <path d="M 412 100 C 438 100, 438 38, 412 38" fill="none" stroke="#D32F2F" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#spec-arr-red2)"/>
+                    <text class="viz-svg-attack-label is-firing" x="454" y="57" text-anchor="start">cross-state attacks</text>
+                    <text class="viz-svg-sublabel" x="454" y="72" text-anchor="start">ship_order / cancel_order</text>
+                  </svg>
+                  <div class="spec-diagram-legend">
+                    <span><i class="legend-solid"></i> Valid <code>actions:</code> + <code>transitions:</code></span>
+                    <span><i class="legend-dashed"></i> <code>--adversarial</code> attacks (cross-state, mutate, replay)</span>
+                  </div>
+                </div>
+                <div class="codeblock-wrap">
+                  <pre class="codeblock" id="spec-adversarial-yaml" data-spec-yaml>actions_only: true
+adversarial_rate: 0.2
+
+state:
+  orders: {}
+
+actions:
+  - tool: create_order
+    args:
+      idempotency_key: "gen_string(8, 16)"
+      amount: "gen_int(100, 10000)"
+  - tool: cancel_order
+    when: "'open' in values(state.orders)"
+    args: { id: "pick_key_where(state.orders, 'open')" }
+  - tool: ship_order
+    when: "'open' in values(state.orders)"
+    args: { id: "pick_key_where(state.orders, 'open')" }
+
+transitions:
+  - name: order-created
+    tool: create_order
+    when: "ok"
+    update: { "orders[res.id]": "'open'" }
+  - name: order-cancelled
+    tool: cancel_order
+    when: "ok"
+    update: { "orders[args.id]": "'cancelled'" }
+  - name: order-shipped
+    tool: ship_order
+    when: "ok"
+    update: { "orders[args.id]": "'shipped'" }
+
+rules:
+  - name: cannot-ship-cancelled-order
+    tool: ship_order
+    when: "args.id in state.orders &amp;&amp; state.orders[args.id] == 'cancelled'"
+    assert: "!ok"
+  - name: cannot-cancel-shipped-order
+    tool: cancel_order
+    when: "args.id in state.orders &amp;&amp; state.orders[args.id] == 'shipped'"
+    assert: "!ok"</pre>
+                  <button class="copy-btn" type="button" data-copy-target="spec-adversarial-yaml" aria-label="Copy adversarial breaking YAML spec">Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="two-col spec-aux-grid">
+          <div class="panel">
+            <p class="eyebrow">Authentication</p>
+            <h3>Agent-friendly token handling</h3>
+            <p>
+              Keep login outside the fuzzer. Pass a token directly, via environment variable, or straight from an OAuth login JSON file (<code>accessToken</code>, <code>access_token</code>, or <code>token</code>).
+            </p>
+            <div class="codeblock-wrap">
+              <pre class="codeblock" id="auth-cmd">blofeld https://localhost:8787/mcp -k \
+  --token-file .context/auth.json \
+  --read-only</pre>
+              <button class="copy-btn" type="button" data-copy-target="auth-cmd" aria-label="Copy auth example">Copy</button>
+            </div>
+            <p>
+              Saved traces automatically redact <code>Authorization</code>, <code>Cookie</code>, and API key/token headers so counterexamples are safe to share or commit.
+            </p>
+          </div>
+
+          <div class="panel">
+            <p class="eyebrow">Adversarial mode</p>
+            <h3>Three ways Blofeld attacks your model</h3>
+            <ul class="tactic-list">
+              <li><strong>Cross-state violations:</strong> bypasses <code>when:</code> guards and relaxes <code>pick_key_where</code> filters to invoke tools on entities in the wrong lifecycle state.</li>
+              <li><strong>Deep payload mutations:</strong> mutates inner fields of valid action arguments—swapping live IDs, injecting boundary values, flipping types, and dropping or adding keys.</li>
+              <li><strong>Step replays:</strong> re-sends earlier calls verbatim (preserving <code>idempotency_key</code>) or with one mutated field to catch duplicate writes and conflict bugs.</li>
+            </ul>
+            <p>
+              State resets cleanly on every run, during Hegel and symbolic <code>ddmin</code> shrinking, and during <code>--replay</code>.
+            </p>
           </div>
         </div>
       </div>
@@ -280,6 +633,12 @@ blofeld https://your-mcp-server.example.com/mcp</pre>
               <summary>Does it require Python or an external Hegel process?</summary>
               <div class="faq-body">
                 No. Blofeld links <code>hegeltest</code>'s native Rust engine (<code>libhegel</code>) directly into a single static-feeling Rust binary with zero Python or runtime sidecars.
+              </div>
+            </details>
+            <details>
+              <summary>Can Blofeld try to break my state machine?</summary>
+              <div class="faq-body">
+                Yes—pass <code>--adversarial</code> (or set <code>adversarial_rate: 0.2</code> in your spec). Blofeld will actively bypass <code>when:</code> preconditions, mutate nested action payloads, and replay earlier calls while still verifying all <code>rules:</code>, <code>transitions:</code>, and <code>probes:</code>.
               </div>
             </details>
             <details>
@@ -340,6 +699,800 @@ blofeld https://your-mcp-server.example.com/mcp</pre>
         // Clipboard permission unavailable; user can select manually.
       }
     });
+
+    for (const root of document.querySelectorAll("[data-spec-tabs]")) {
+      const tablist = root.querySelector('[role="tablist"]');
+      const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+      const panels = Array.from(root.querySelectorAll('[role="tabpanel"]'));
+
+      const selectTab = (selected) => {
+        for (const tab of tabs) {
+          const isSelected = tab === selected;
+          tab.ariaSelected = String(isSelected);
+          tab.toggleAttribute("focusgroupstart", isSelected);
+          tab.tabIndex = isSelected ? 0 : -1;
+        }
+        for (const panel of panels) {
+          const isMatch = panel.getAttribute("aria-labelledby") === selected.id;
+          if (isMatch) {
+            panel.removeAttribute("hidden");
+          } else {
+            panel.hidden = "until-found";
+          }
+        }
+        try {
+          selected.scrollIntoView({ block: "nearest", inline: "nearest", container: "nearest" });
+        } catch {
+          selected.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
+      };
+
+      for (const tab of tabs) {
+        tab.addEventListener("click", () => selectTab(tab));
+        tab.addEventListener("focus", () => selectTab(tab));
+      }
+
+      root.addEventListener("beforematch", (event) => {
+        const panel = event.target.closest('[role="tabpanel"]');
+        if (!panel) return;
+        const tab = document.getElementById(panel.getAttribute("aria-labelledby"));
+        if (tab) selectTab(tab);
+      });
+
+      if (!Object.hasOwn(HTMLElement.prototype, "focusGroup")) {
+        tablist.addEventListener("keydown", (event) => {
+          const idx = tabs.indexOf(document.activeElement);
+          if (idx === -1) return;
+          const isRtl = getComputedStyle(tablist).direction === "rtl";
+          let next = null;
+          if (event.key === "ArrowRight") next = (idx + (isRtl ? -1 : 1) + tabs.length) % tabs.length;
+          else if (event.key === "ArrowLeft") next = (idx + (isRtl ? 1 : -1) + tabs.length) % tabs.length;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = tabs.length - 1;
+          if (next !== null) {
+            event.preventDefault();
+            tabs[next].focus();
+          }
+        });
+      }
+
+      if (!CSS.supports("animation-timeline", "scroll()")) {
+        const first = tabs[0];
+        const last = tabs[tabs.length - 1];
+        if (first && last) {
+          const observer = new IntersectionObserver((entries) => {
+            for (const { target, intersectionRatio } of entries) {
+              tablist.classList.toggle(target === first ? "more-start" : "more-end", intersectionRatio < 1);
+            }
+          }, { root: tablist, threshold: 1, rootMargin: "1px" });
+          observer.observe(first);
+          observer.observe(last);
+        }
+      }
+    }
+
+    (() => {
+      const root = document.querySelector("[data-demo-root]");
+      if (!root) return;
+
+      const tablist = root.querySelector('[role="tablist"]');
+      const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+      const toggleBtn = root.querySelector("[data-demo-toggle]");
+      const stepBtn = root.querySelector("[data-demo-step]");
+      const restartBtn = root.querySelector("[data-demo-restart]");
+      const stageEl = root.querySelector("[data-demo-stage]");
+      const cliEl = root.querySelector("[data-demo-cli]");
+      const counterEl = root.querySelector("[data-demo-counter]");
+      const jumpBtn = root.querySelector("[data-demo-jump]");
+      const progressEl = root.querySelector("[data-demo-progress]");
+      const badgeEl = root.querySelector("[data-demo-badge]");
+      const logEl = root.querySelector("[data-demo-log]");
+      const visualTitleEl = root.querySelector("[data-demo-visual-title]");
+      const visualTagEl = root.querySelector("[data-demo-visual-tag]");
+      const visualEl = root.querySelector("[data-demo-visual]");
+      const captionEl = root.querySelector("[data-demo-caption]");
+      const dotsEl = root.querySelector("[data-demo-dots]");
+
+      const MODES = {
+        zero: {
+          cli: "$ blofeld http://localhost:3000/mcp --save-trace failure.trace.json",
+          visualTitle: "ValuePool & dual shrinker",
+          visualTag: "Zero config",
+          specTab: null,
+          steps: [
+            {
+              badge: "DISCOVER",
+              tone: "info",
+              log: [
+                { tag: "MCP", text: "initialize + tools/list → 4 tools discovered", kind: "ok" },
+                { tag: "BOOT", text: "list_items() → seeded ValuePool with live schema values", kind: "ok" }
+              ],
+              caption: "Zero config: Blofeld connects, reads every tool's JSON Schema, and bootstraps read-only tools to seed live IDs.",
+              render: () => `
+                <div class="viz-card">
+                  <div class="viz-label">Discovered tools</div>
+                  <div class="viz-chips">
+                    <span class="viz-chip viz-chip--active">create_item</span>
+                    <span class="viz-chip viz-chip--active">lock_item</span>
+                    <span class="viz-chip viz-chip--active">delete_item</span>
+                    <span class="viz-chip viz-chip--ok">list_items · readOnly</span>
+                  </div>
+                </div>
+                <div class="viz-card">
+                  <div class="viz-label">Active checks</div>
+                  <div class="viz-kv"><span>Protocol &amp; 5xx</span><strong>7 built-in invariants</strong></div>
+                  <div class="viz-kv"><span>Generator</span><strong>Valid · Boundary · Malformed</strong></div>
+                </div>`
+            },
+            {
+              badge: "EXPLORING",
+              tone: "info",
+              log: [
+                { tag: "MCP", text: "initialize + tools/list → 4 tools discovered", kind: "dim" },
+                { tag: "CALL", text: 'create_item({"name":"q8x!—alpha"}) → {"id":"item-7f"}', kind: "ok" },
+                { tag: "POOL", text: 'harvested id="item-7f" into cross-call ValuePool', kind: "info" }
+              ],
+              caption: "Responses populate a cross-call ValuePool so downstream tools automatically reuse real IDs and slugs.",
+              render: () => `
+                <div class="viz-card">
+                  <div class="viz-label">Cross-call ValuePool</div>
+                  <div class="viz-chips">
+                    <span class="viz-chip viz-chip--pulse">id = "item-7f"</span>
+                    <span class="viz-chip">name = "q8x!—alpha"</span>
+                  </div>
+                </div>
+                <div class="viz-card">
+                  <div class="viz-label">Session trace (28 steps exploring)</div>
+                  <div class="viz-bars">${Array.from({ length: 14 }, (_, i) => `<span class="viz-bar ${i === 1 ? "viz-bar--keep" : ""}"></span>`).join("")}</div>
+                  <div class="viz-note">Hegel chains harvested IDs across Valid, Boundary, and Malformed calls.</div>
+                </div>`
+            },
+            {
+              badge: "EXPLORING",
+              tone: "info",
+              log: [
+                { tag: "CALL", text: 'create_item({"name":"q8x!—alpha"}) → {"id":"item-7f"}', kind: "dim" },
+                { tag: "CALL", text: 'lock_item({"id":"item-7f"}) → {"status":"locked"}', kind: "ok" },
+                { tag: "CALL", text: "25 more generated calls (list, boundary, malformed)...", kind: "dim" }
+              ],
+              caption: "Blofeld drives long stateful sessions while checking every JSON-RPC envelope, schema, and error leak.",
+              render: () => `
+                <div class="viz-card">
+                  <div class="viz-label">Cross-call ValuePool</div>
+                  <div class="viz-chips">
+                    <span class="viz-chip viz-chip--active">id = "item-7f" (reused 6×)</span>
+                  </div>
+                </div>
+                <div class="viz-card">
+                  <div class="viz-label">Session trace (27 steps)</div>
+                  <div class="viz-bars">${Array.from({ length: 24 }, (_, i) => `<span class="viz-bar ${i === 1 || i === 11 ? "viz-bar--keep" : ""}"></span>`).join("")}</div>
+                  <div class="viz-note">All 7 built-in protocol invariants passing so far…</div>
+                </div>`
+            },
+            {
+              badge: "FAIL · 5XX",
+              tone: "fail",
+              log: [
+                { tag: "CALL", text: 'create_item({"name":"q8x!—alpha"}) → {"id":"item-7f"}', kind: "dim" },
+                { tag: "CALL", text: 'lock_item({"id":"item-7f"}) → {"status":"locked"}', kind: "dim" },
+                { tag: "FAIL", text: 'delete_item({"id":"item-7f"}) → HTTP 500 Internal Error', kind: "fail" },
+                { tag: "PROP", text: "property 'no_http_5xx' violated on step 28 (seed=7)", kind: "fail" }
+              ],
+              caption: "Step 28 hits an unhandled HTTP 500 when deleting a locked item—Blofeld immediately enters dual shrinking.",
+              render: () => `
+                <div class="viz-card viz-card--fail">
+                  <div class="viz-label">Violation caught on step 28</div>
+                  <div class="viz-kv"><span>Property</span><strong class="viz-red">no_http_5xx</strong></div>
+                  <div class="viz-kv"><span>Trigger</span><strong>delete_item({"id":"item-7f"})</strong></div>
+                </div>
+                <div class="viz-card">
+                  <div class="viz-label">Shrinking 28 steps with Hegel + symbolic ddmin</div>
+                  <div class="viz-bars">${Array.from({ length: 24 }, (_, i) => `<span class="viz-bar ${i === 1 || i === 11 ? "viz-bar--keep" : i === 23 ? "viz-bar--fail" : "viz-bar--drop"}"></span>`).join("")}</div>
+                  <div class="viz-note">Dropping unrelated steps and shrinking payload strings simultaneously…</div>
+                </div>`
+            },
+            {
+              badge: "SHRUNK 28→3",
+              tone: "fail",
+              log: [
+                { tag: "MIN", text: "Minimal counterexample (3 steps, shrunk from 28):", kind: "info" },
+                { tag: "1.", text: 'create_item({"name":"a"}) → {"id":"item-1"}', kind: "ok" },
+                { tag: "2.", text: 'lock_item({"id":"item-1"}) → {"status":"locked"}', kind: "ok" },
+                { tag: "3.", text: 'delete_item({"id":"item-1"}) → HTTP 500', kind: "fail" },
+                { tag: "SAVE", text: "Saved redacted trace → --replay failure.trace.json", kind: "info" }
+              ],
+              caption: "Dual shrinking collapses 28 noisy steps to 3 minimal calls and remaps fresh server IDs (item-7f → item-1) for deterministic --replay.",
+              render: () => `
+                <div class="viz-card viz-card--fail">
+                  <div class="viz-label">Shrunk reproducer (28 → 3 steps)</div>
+                  <div class="viz-bars viz-bars--shrunk">
+                    <span class="viz-bar viz-bar--keep"></span>
+                    <span class="viz-bar viz-bar--keep"></span>
+                    <span class="viz-bar viz-bar--fail"></span>
+                  </div>
+                  <div class="viz-kv"><span>Payload shrunk</span><strong>"q8x!—alpha" → "a"</strong></div>
+                  <div class="viz-kv"><span>Symbolic ID remap</span><strong>item-7f → item-1</strong></div>
+                  <div class="viz-kv"><span>Auth headers</span><strong>&lt;REDACTED&gt;</strong></div>
+                </div>`
+            }
+          ]
+        },
+        stateful: {
+          cli: "$ blofeld http://localhost:3000/mcp --spec items.yaml",
+          visualTitle: "Item state machine & read probe",
+          visualTag: "YAML + CEL",
+          specTab: "tab-stateful",
+          steps: [
+            {
+              badge: "INIT",
+              tone: "info",
+              log: [
+                { tag: "INIT", text: "seed-count: list_items() → []", kind: "ok" },
+                { tag: "STATE", text: "state.items = {}, state.count = 0", kind: "info" }
+              ],
+              caption: "init: seeds the state machine from real server data before the first transition runs.",
+              render: () => renderItemGraph({
+                activeNode: "none",
+                activeEdge: null,
+                attackState: null,
+                model: "items: {} · count: 0",
+                server: "list_items → [] (0)",
+                statusTone: "ok",
+                statusText: "INIT SYNCED · model == server (0)"
+              })
+            },
+            {
+              badge: "TRANSITION",
+              tone: "ok",
+              log: [
+                { tag: "CALL", text: 'create_item({"name":"chair"}) → {"id":"i-1"}', kind: "ok" },
+                { tag: "TRANS", text: 'item-created: none → open, count = 1 ✓', kind: "ok" },
+                { tag: "PROBE", text: "list_items() → 1 == state.count ✓", kind: "ok" }
+              ],
+              caption: "create_item advances i-1 from ∅ → open, and the read probe confirms server storage matches.",
+              render: () => renderItemGraph({
+                activeNode: "open",
+                activeEdge: "create",
+                attackState: null,
+                model: 'i-1: "open" · count: 1',
+                server: 'list_items → ["i-1"] (1)',
+                statusTone: "ok",
+                statusText: "PROBE PASS · size(res.items) == 1"
+              })
+            },
+            {
+              badge: "TRANSITION",
+              tone: "ok",
+              log: [
+                { tag: "ACT", text: 'actions: lock_item(id = pick_key_where(items, "open") → "i-1")', kind: "info" },
+                { tag: "CALL", text: 'lock_item({"id":"i-1"}) → {"status":"locked"}', kind: "ok" },
+                { tag: "TRANS", text: 'item-locked: open → locked ✓', kind: "ok" }
+              ],
+              caption: "State-guided actions: pick a live 'open' item and drive it into the 'locked' state.",
+              render: () => renderItemGraph({
+                activeNode: "locked",
+                activeEdge: "lock",
+                attackState: null,
+                model: 'i-1: "locked" · count: 1',
+                server: 'list_items → ["i-1"] (1)',
+                statusTone: "info",
+                statusText: "STATE · i-1 locked (delete now forbidden)"
+              })
+            },
+            {
+              badge: "GUARD TEST",
+              tone: "info",
+              log: [
+                { tag: "TRY", text: 'delete_item({"id":"i-1"}) on locked item (testing !ok guard)', kind: "info" },
+                { tag: "RESP", text: 'isError: true ("cannot delete locked item")', kind: "ok" },
+                { tag: "RULE", text: "locked-item-cannot-be-deleted: assert !ok ✓", kind: "ok" }
+              ],
+              caption: "Blofeld attempts the forbidden locked ⇢ delete_item transition—the server rejects it, so the guard holds.",
+              render: () => renderItemGraph({
+                activeNode: "locked",
+                activeEdge: null,
+                attackState: "held",
+                model: 'i-1: "locked" · count: 1',
+                server: 'delete rejected (!ok) ✓',
+                statusTone: "ok",
+                statusText: "GUARD HELD · forbidden transition blocked"
+              })
+            },
+            {
+              badge: "FAIL · PROBE",
+              tone: "fail",
+              log: [
+                { tag: "CALL", text: 'delete_item({"id":"i-2"}) on open item → {"deleted":true}', kind: "dim" },
+                { tag: "PROBE", text: 'list_items() → ["i-1", "i-2"] (size=2, expected 1!)', kind: "fail" },
+                { tag: "FAIL", text: "probe:list-matches-model violated — silent ghost delete!", kind: "fail" }
+              ],
+              caption: "On open → deleted, the server returns 200 OK but leaves i-2 behind—caught immediately by the read probe.",
+              render: () => renderItemGraph({
+                activeNode: "deleted",
+                activeEdge: "delete",
+                attackState: "drift",
+                model: "i-2 deleted · count: 1",
+                server: 'list_items → 2 (GHOST!)',
+                statusTone: "fail",
+                statusText: "FAIL · probe:list-matches-model (2 != 1)"
+              })
+            }
+          ]
+        },
+        readonly: {
+          cli: "$ blofeld https://api.example.com/mcp --read-only --spec readonly.yaml",
+          visualTitle: "Read-only safety gate & ledger",
+          visualTag: "Staging / Prod",
+          specTab: "tab-readonly",
+          steps: [
+            {
+              badge: "TOOL GATE",
+              tone: "info",
+              log: [
+                { tag: "MCP", text: "tools/list → 5 tools discovered", kind: "ok" },
+                { tag: "SAFE", text: "--read-only active: mutating tools excluded from fuzzing & probes", kind: "info" }
+              ],
+              caption: "--read-only restricts calls, init hooks, and probes strictly to tools annotated with readOnlyHint: true.",
+              render: () => `
+                <div class="viz-card">
+                  <div class="viz-label">Read-only tool gate</div>
+                  <div class="viz-gate">
+                    <div class="viz-gate-row viz-gate-row--ok"><span>businesses</span><span>ALLOW · readOnlyHint</span></div>
+                    <div class="viz-gate-row viz-gate-row--ok"><span>events_list</span><span>ALLOW · readOnlyHint</span></div>
+                    <div class="viz-gate-row viz-gate-row--ok"><span>reports_balance_sheet</span><span>ALLOW · readOnlyHint</span></div>
+                    <div class="viz-gate-row viz-gate-row--block"><span>create_invoice</span><span>BLOCKED</span></div>
+                    <div class="viz-gate-row viz-gate-row--block"><span>delete_party</span><span>BLOCKED</span></div>
+                  </div>
+                </div>`
+            },
+            {
+              badge: "INIT LOCK",
+              tone: "ok",
+              log: [
+                { tag: "INIT", text: 'businesses() → state.business = "acme"', kind: "ok" },
+                { tag: "INIT", text: "events_list(limit=1) → state.event_head = 412", kind: "ok" }
+              ],
+              caption: "init: discovers the live tenant slug and snapshots the current event-log cursor before fuzzing begins.",
+              render: () => `
+                <div class="viz-card viz-card--active">
+                  <div class="viz-label">Episode baseline</div>
+                  <div class="viz-kv"><span>state.business</span><strong>"acme"</strong></div>
+                  <div class="viz-kv"><span>state.event_head</span><strong>seq #412 (locked)</strong></div>
+                </div>
+                <div class="viz-status viz-status--info">BASELINE LOCKED · ready for read-only fuzzing</div>`
+            },
+            {
+              badge: "RULE OK",
+              tone: "ok",
+              log: [
+                { tag: "CALL", text: 'reports_balance_sheet({"business":"acme","as_of":"2026-11-27"})', kind: "ok" },
+                { tag: "RULE", text: "balance-sheet-balances: 42800 == 12300 + 30500 ✓", kind: "ok" }
+              ],
+              caption: "Blofeld fuzzes read endpoints with valid and boundary parameters while asserting accounting invariants in CEL.",
+              render: () => `
+                <div class="viz-card viz-card--ok">
+                  <div class="viz-label">Conservation invariant (CEL rule)</div>
+                  <div class="viz-equation">
+                    <span>Assets <strong>42,800</strong></span>
+                    <span>==</span>
+                    <span>Liab. <strong>12,300</strong> + Eq. <strong>30,500</strong></span>
+                  </div>
+                </div>
+                <div class="viz-status viz-status--ok">PASS · rule:balance-sheet-balances</div>`
+            },
+            {
+              badge: "PROBE OK",
+              tone: "ok",
+              log: [
+                { tag: "CALL", text: 'reports_balance_sheet({"business":"acme"}) → 200 OK', kind: "dim" },
+                { tag: "PROBE", text: "reads-never-append-events (after: every_step) → seq=412", kind: "ok" },
+                { tag: "PASS", text: "assert seq == state.event_head (412 == 412) ✓", kind: "ok" }
+              ],
+              caption: "An after: every_step probe proves that no read-only tool accidentally wrote an event or mutated server state.",
+              render: () => `
+                <div class="viz-card viz-card--ok">
+                  <div class="viz-label">Immutability probe (after: every_step)</div>
+                  <div class="viz-kv"><span>Initial event_head</span><strong>#412</strong></div>
+                  <div class="viz-kv"><span>Current event_head</span><strong class="viz-green">#412 (unchanged)</strong></div>
+                </div>
+                <div class="viz-status viz-status--ok">ZERO SIDE EFFECTS · 0 events appended</div>`
+            },
+            {
+              badge: "PASS · 400",
+              tone: "ok",
+              log: [
+                { tag: "DONE", text: "20 runs · 400 read-only steps · 0 mutations · 0 leaks", kind: "ok" },
+                { tag: "PASS", text: "All protocol, balance-sheet, and immutability checks passed ✓", kind: "ok" }
+              ],
+              caption: "Safe to schedule against staging or production in CI—proving reads stay fast, balanced, and strictly side-effect free.",
+              render: () => `
+                <div class="viz-card viz-card--ok">
+                  <div class="viz-label">Campaign summary</div>
+                  <div class="viz-kv"><span>Steps executed</span><strong>400 read-only calls</strong></div>
+                  <div class="viz-kv"><span>Event cursor</span><strong class="viz-green">#412 == #412</strong></div>
+                  <div class="viz-kv"><span>Mutating tools called</span><strong>0</strong></div>
+                </div>
+                <div class="viz-status viz-status--ok">PASS · exit 0</div>`
+            }
+          ]
+        },
+        adversarial: {
+          cli: "$ blofeld http://localhost:3000/mcp --spec orders.yaml --adversarial",
+          visualTitle: "State graph & attack tactics",
+          visualTag: "adversarial_rate: 0.2",
+          specTab: "tab-adversarial",
+          steps: [
+            {
+              badge: "VALID FLOW",
+              tone: "ok",
+              log: [
+                { tag: "ACT", text: 'create_order({"idempotency_key":"k9f2","amount":2500}) → ord-1', kind: "ok" },
+                { tag: "STATE", text: 'orders["ord-1"] = "open"', kind: "info" }
+              ],
+              caption: "Normal actions: build realistic state first so adversarial attacks target real live entities instead of empty IDs.",
+              render: () => renderOrderGraph("open", false, 0)
+            },
+            {
+              badge: "VALID FLOW",
+              tone: "ok",
+              log: [
+                { tag: "ACT", text: 'create_order({"idempotency_key":"k9f2","amount":2500}) → ord-1', kind: "dim" },
+                { tag: "ACT", text: 'cancel_order({"id":"ord-1"}) → {"status":"cancelled"}', kind: "ok" },
+                { tag: "STATE", text: 'orders["ord-1"] = "cancelled"', kind: "info" }
+              ],
+              caption: "Order ord-1 transitions cleanly to cancelled. Normal actions: will never pick ord-1 for ship_order again.",
+              render: () => renderOrderGraph("cancelled", false, 0)
+            },
+            {
+              badge: "ATTACK 1/3",
+              tone: "fail",
+              log: [
+                { tag: "ADV", text: "Tactic 1 · Cross-state: bypassed ship_order.when & pick_key_where", kind: "fail" },
+                { tag: "CALL", text: 'ship_order({"id":"ord-1"}) on cancelled order → ok: true!', kind: "fail" },
+                { tag: "FAIL", text: "rule:cannot-ship-cancelled-order violated (expected !ok)", kind: "fail" }
+              ],
+              caption: "Cross-state attack bypasses when: guards and pick_key_where to call ship_order on a cancelled order—catching a missing server guard.",
+              render: () => renderOrderGraph("cancelled", true, 1)
+            },
+            {
+              badge: "ATTACK 2/3",
+              tone: "fail",
+              log: [
+                { tag: "ADV", text: "Tactic 2 · Deep payload mutation on create_order", kind: "fail" },
+                { tag: "MUT", text: '{"idempotency_key":"k9f2","amount":-99999,"extra":true}', kind: "info" },
+                { tag: "CHECK", text: "Swaps live IDs, injects boundary values, flips types, drops/adds keys", kind: "ok" }
+              ],
+              caption: "Deep payload mutation perturbs inner fields of valid action payloads—testing validation without breaking outer tenant fields.",
+              render: () => renderOrderGraph("cancelled", false, 2)
+            },
+            {
+              badge: "ATTACK 3/3",
+              tone: "fail",
+              log: [
+                { tag: "ADV", text: "Tactic 3 · Step replay (verbatim + mutated)", kind: "fail" },
+                { tag: "CALL", text: 'create_order({"idempotency_key":"k9f2","amount":2500}) [REPLAY]', kind: "info" },
+                { tag: "CHECK", text: "Catches duplicate writes on same idempotency_key & conflict bugs", kind: "ok" }
+              ],
+              caption: "Step replay re-sends earlier calls verbatim (same idempotency_key) or with one field mutated to verify idempotency guarantees.",
+              render: () => renderOrderGraph("cancelled", false, 3)
+            }
+          ]
+        }
+      };
+
+      function renderItemGraph({ activeNode, activeEdge, attackState, model, server, statusTone, statusText }) {
+        const nodeClass = (name) =>
+          activeNode === name
+            ? `viz-svg-node ${attackState === "drift" && name === "deleted" ? "viz-svg-node--fail" : "viz-svg-node--active"}`
+            : "viz-svg-node";
+        const edgeClass = (name) =>
+          activeEdge === name ? "viz-valid-edge is-active" : "viz-valid-edge";
+        const tryingLocked = attackState === "held";
+        return `
+          <div class="viz-card ${attackState === "drift" ? "viz-card--fail" : tryingLocked ? "viz-card--active" : ""}">
+            <div class="viz-label">Item lifecycle state machine</div>
+            <svg class="viz-svg viz-svg--wide" viewBox="0 0 420 132" role="img" aria-label="Item state machine with states none, open, locked, and deleted, showing valid transitions and a dashed forbidden delete_item edge from locked">
+              <defs>
+                <marker id="item-arr-ink" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 7 4 L 0 7 z" fill="#4A4A4A"/>
+                </marker>
+                <marker id="item-arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 7 4 L 0 7 z" fill="#1B7A43"/>
+                </marker>
+                <marker id="item-arr-red" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 7 4 L 0 7 z" fill="#D32F2F"/>
+                </marker>
+              </defs>
+              <line class="${edgeClass("create")}" x1="38" y1="66" x2="73" y2="66" marker-end="${activeEdge === "create" ? "url(#item-arr-ok)" : "url(#item-arr-ink)"}"/>
+              <text class="viz-svg-edge-label ${activeEdge === "create" ? "is-active" : ""}" x="56" y="57" text-anchor="middle">create</text>
+              <line class="${edgeClass("lock")}" x1="154" y1="58" x2="213" y2="34" marker-end="${activeEdge === "lock" ? "url(#item-arr-ok)" : "url(#item-arr-ink)"}"/>
+              <text class="viz-svg-edge-label ${activeEdge === "lock" ? "is-active" : ""}" x="179" y="37" text-anchor="middle">lock</text>
+              <line class="${edgeClass("delete")}" x1="154" y1="74" x2="213" y2="98" marker-end="${activeEdge === "delete" ? "url(#item-arr-ok)" : "url(#item-arr-ink)"}"/>
+              <text class="viz-svg-edge-label ${activeEdge === "delete" ? "is-active" : ""}" x="179" y="102" text-anchor="middle">delete</text>
+              <path class="viz-illegal-edge ${tryingLocked ? "is-firing" : ""}" d="M 304 32 C 334 32, 334 100, 304 100" fill="none" stroke="#D32F2F" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#item-arr-red)"/>
+              <text class="viz-svg-attack-label ${tryingLocked ? "is-firing" : ""}" x="336" y="61" text-anchor="start">delete!</text>
+              <text class="viz-svg-sublabel ${tryingLocked ? "is-firing" : ""}" x="336" y="74" text-anchor="start">${tryingLocked ? "rejected ✓" : "!ok guard"}</text>
+              <g class="${nodeClass("none")}">
+                <circle cx="24" cy="66" r="14"/>
+                <text x="24" y="70" text-anchor="middle">∅</text>
+              </g>
+              <g class="${nodeClass("open")}">
+                <rect x="76" y="50" width="78" height="32"/>
+                <text x="115" y="70" text-anchor="middle">open</text>
+              </g>
+              <g class="${nodeClass("locked")}">
+                <rect x="216" y="16" width="88" height="32"/>
+                <text x="260" y="36" text-anchor="middle">locked</text>
+              </g>
+              <g class="${nodeClass("deleted")}">
+                <rect x="216" y="84" width="88" height="32"/>
+                <text x="260" y="104" text-anchor="middle">deleted</text>
+              </g>
+            </svg>
+          </div>
+          <div class="viz-split">
+            <div class="viz-card viz-card--compact">
+              <div class="viz-label">Shadow model</div>
+              <div class="viz-code">${model}</div>
+            </div>
+            <div class="viz-card viz-card--compact ${attackState === "drift" ? "viz-card--fail" : ""}">
+              <div class="viz-label">Live server probe</div>
+              <div class="viz-code">${server}</div>
+            </div>
+          </div>
+          <div class="viz-status viz-status--${statusTone}">${statusText}</div>`;
+      }
+
+      function renderOrderGraph(activeState, illegalEdge, activeTactic) {
+        const nodeClass = (name) =>
+          activeState === name ? "viz-svg-node viz-svg-node--active" : "viz-svg-node";
+        const validEdge = (edge) => {
+          if (activeTactic === 0 && activeState === "open" && edge === "create") return "viz-valid-edge is-active";
+          if (activeTactic === 0 && activeState === "cancelled" && edge === "cancel") return "viz-valid-edge is-active";
+          return "viz-valid-edge";
+        };
+        const tactic = (num, title, detail) => `
+          <div class="viz-tactic ${activeTactic === num ? "viz-tactic--active" : ""}">
+            <span class="viz-tactic-num">0${num}</span>
+            <div><strong>${title}</strong><span>${detail}</span></div>
+          </div>`;
+        const crossFiring = illegalEdge || activeTactic === 1;
+        const mutateFiring = activeTactic === 2;
+        const replayFiring = activeTactic === 3;
+        return `
+          <div class="viz-card ${activeTactic > 0 ? "viz-card--fail" : ""}">
+            <div class="viz-label">Order state machine (ord-1) · how Blofeld breaks it</div>
+            <svg class="viz-svg viz-svg--wide" viewBox="0 0 420 144" role="img" aria-label="Order state machine showing open transitioning to cancelled or shipped, with three adversarial attack vectors: cross-state ship_order, deep payload mutation, and step replay">
+              <defs>
+                <marker id="arrow-ink" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 7 4 L 0 7 z" fill="#4A4A4A"/>
+                </marker>
+                <marker id="arrow-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 7 4 L 0 7 z" fill="#1B7A43"/>
+                </marker>
+                <marker id="arrow-red" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 7 4 L 0 7 z" fill="#D32F2F"/>
+                </marker>
+              </defs>
+              <line class="${validEdge("create")}" x1="38" y1="72" x2="83" y2="72" marker-end="${validEdge("create").includes("is-active") ? "url(#arrow-ok)" : "url(#arrow-ink)"}"/>
+              <text class="viz-svg-edge-label ${validEdge("create").includes("is-active") ? "is-active" : ""}" x="60" y="64" text-anchor="middle">create</text>
+              <line class="${validEdge("cancel")}" x1="164" y1="64" x2="221" y2="36" marker-end="${validEdge("cancel").includes("is-active") ? "url(#arrow-ok)" : "url(#arrow-ink)"}"/>
+              <text class="viz-svg-edge-label ${validEdge("cancel").includes("is-active") ? "is-active" : ""}" x="186" y="40" text-anchor="middle">cancel</text>
+              <line class="${validEdge("ship")}" x1="164" y1="80" x2="221" y2="108" marker-end="url(#arrow-ink)"/>
+              <text class="viz-svg-edge-label" x="186" y="110" text-anchor="middle">ship</text>
+
+              <path class="viz-illegal-edge ${crossFiring ? "is-firing" : ""}" d="M 318 34 C 346 34, 346 110, 318 110" fill="none" stroke="#D32F2F" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arrow-red)"/>
+              <text class="viz-svg-attack-label ${crossFiring ? "is-firing" : ""}" x="348" y="68" text-anchor="start">ship_order!</text>
+              <text class="viz-svg-sublabel ${crossFiring ? "is-firing" : ""}" x="348" y="81" text-anchor="start">when bypassed</text>
+
+              <line class="viz-illegal-edge ${mutateFiring ? "is-firing" : ""}" x1="60" y1="120" x2="60" y2="77" stroke="#D32F2F" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow-red)"/>
+              <text class="viz-svg-attack-label ${mutateFiring ? "is-firing" : ""}" x="60" y="134" text-anchor="middle">mutate args!</text>
+
+              <path class="viz-illegal-edge ${replayFiring ? "is-firing" : ""}" d="M 48 49 C 40 20, 80 20, 72 49" fill="none" stroke="#D32F2F" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow-red)"/>
+              <text class="viz-svg-attack-label ${replayFiring ? "is-firing" : ""}" x="60" y="14" text-anchor="middle">replay key!</text>
+
+              <g class="viz-svg-node">
+                <circle cx="24" cy="72" r="14"/>
+                <text x="24" y="76" text-anchor="middle">∅</text>
+              </g>
+              <g class="${nodeClass("open")}">
+                <rect x="86" y="56" width="78" height="32"/>
+                <text x="125" y="76" text-anchor="middle">open</text>
+              </g>
+              <g class="${nodeClass("cancelled")}">
+                <rect x="224" y="18" width="94" height="32"/>
+                <text x="271" y="38" text-anchor="middle">cancelled</text>
+              </g>
+              <g class="${nodeClass("shipped")}">
+                <rect x="224" y="94" width="94" height="32"/>
+                <text x="271" y="114" text-anchor="middle">shipped</text>
+              </g>
+            </svg>
+          </div>
+          <div class="viz-tactics">
+            ${tactic(1, "Cross-state", "when: bypassed")}
+            ${tactic(2, "Mutate args", "amount: -99999")}
+            ${tactic(3, "Step replay", "key: k9f2 ×2")}
+          </div>`;
+      }
+
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      let modeKey = "zero";
+      let stepIdx = reducedMotion ? MODES.zero.steps.length - 1 : 0;
+      let playing = !reducedMotion;
+      let inView = true;
+      let timer = null;
+      const STEP_MS = 2700;
+
+      const syncToggleLabel = () => {
+        toggleBtn.textContent = playing ? "Pause" : "Play";
+      };
+
+      const stopTimer = () => {
+        if (timer !== null) {
+          clearInterval(timer);
+          timer = null;
+        }
+      };
+
+      const startTimer = () => {
+        stopTimer();
+        if (!playing || !inView) return;
+        timer = setInterval(() => {
+          const total = MODES[modeKey].steps.length;
+          stepIdx = (stepIdx + 1) % total;
+          render();
+        }, STEP_MS);
+      };
+
+      const render = () => {
+        const mode = MODES[modeKey];
+        const step = mode.steps[stepIdx];
+        const total = mode.steps.length;
+
+        cliEl.textContent = mode.cli;
+        counterEl.textContent = `Step ${stepIdx + 1} / ${total}`;
+        visualTitleEl.textContent = mode.visualTitle;
+        visualTagEl.textContent = mode.visualTag;
+        badgeEl.textContent = step.badge;
+        badgeEl.dataset.tone = step.tone;
+        progressEl.style.transform = `scaleX(${(stepIdx + 1) / total})`;
+        captionEl.textContent = step.caption;
+
+        if (mode.specTab) {
+          jumpBtn.hidden = false;
+          jumpBtn.dataset.targetTab = mode.specTab;
+        } else {
+          jumpBtn.hidden = true;
+        }
+
+        logEl.innerHTML = step.log
+          .map(
+            (entry, i) => `
+            <li class="demo-log-row demo-log-row--${entry.kind}" style="--row-i:${i}">
+              <span class="demo-log-tag">${entry.tag}</span>
+              <span class="demo-log-text">${entry.text}</span>
+            </li>`
+          )
+          .join("");
+
+        visualEl.innerHTML = step.render();
+
+        dotsEl.innerHTML = mode.steps
+          .map(
+            (_, i) => `
+            <button
+              type="button"
+              class="demo-dot ${i === stepIdx ? "is-active" : ""}"
+              data-step-dot="${i}"
+              aria-label="Go to step ${i + 1} of ${total}"
+              aria-current="${i === stepIdx ? "step" : "false"}"></button>`
+          )
+          .join("");
+      };
+
+      const selectMode = (nextKey, userInitiated) => {
+        modeKey = nextKey;
+        stepIdx = reducedMotion && !playing ? MODES[modeKey].steps.length - 1 : 0;
+        for (const tab of tabs) {
+          const isSelected = tab.dataset.demoMode === modeKey;
+          tab.ariaSelected = String(isSelected);
+          tab.toggleAttribute("focusgroupstart", isSelected);
+          tab.tabIndex = isSelected ? 0 : -1;
+          if (isSelected) {
+            stageEl.setAttribute("aria-labelledby", tab.id);
+          }
+          if (isSelected && userInitiated) {
+            try {
+              tab.scrollIntoView({ block: "nearest", inline: "nearest", container: "nearest" });
+            } catch {
+              tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }
+          }
+        }
+        render();
+        startTimer();
+      };
+
+      for (const tab of tabs) {
+        tab.addEventListener("click", () => selectMode(tab.dataset.demoMode, true));
+        tab.addEventListener("focus", () => selectMode(tab.dataset.demoMode, true));
+      }
+
+      if (!Object.hasOwn(HTMLElement.prototype, "focusGroup")) {
+        tablist.addEventListener("keydown", (event) => {
+          const idx = tabs.indexOf(document.activeElement);
+          if (idx === -1) return;
+          const isRtl = getComputedStyle(tablist).direction === "rtl";
+          let next = null;
+          if (event.key === "ArrowRight") next = (idx + (isRtl ? -1 : 1) + tabs.length) % tabs.length;
+          else if (event.key === "ArrowLeft") next = (idx + (isRtl ? 1 : -1) + tabs.length) % tabs.length;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = tabs.length - 1;
+          if (next !== null) {
+            event.preventDefault();
+            tabs[next].focus();
+          }
+        });
+      }
+
+      toggleBtn.addEventListener("click", () => {
+        playing = !playing;
+        syncToggleLabel();
+        if (playing) {
+          if (stepIdx === MODES[modeKey].steps.length - 1) stepIdx = 0;
+          render();
+          startTimer();
+        } else {
+          stopTimer();
+        }
+      });
+
+      stepBtn.addEventListener("click", () => {
+        playing = false;
+        syncToggleLabel();
+        stopTimer();
+        stepIdx = (stepIdx + 1) % MODES[modeKey].steps.length;
+        render();
+      });
+
+      restartBtn.addEventListener("click", () => {
+        stepIdx = 0;
+        render();
+        if (playing) startTimer();
+      });
+
+      dotsEl.addEventListener("click", (event) => {
+        const dot = event.target.closest("[data-step-dot]");
+        if (!dot) return;
+        playing = false;
+        syncToggleLabel();
+        stopTimer();
+        stepIdx = Number(dot.dataset.stepDot);
+        render();
+      });
+
+      jumpBtn.addEventListener("click", () => {
+        const targetId = jumpBtn.dataset.targetTab;
+        const specTab = targetId && document.getElementById(targetId);
+        if (specTab) specTab.click();
+        document.getElementById("rules")?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
+      });
+
+      const io = new IntersectionObserver(
+        (entries) => {
+          inView = entries[0]?.isIntersecting ?? true;
+          if (inView) startTimer();
+          else stopTimer();
+        },
+        { threshold: 0.15 }
+      );
+      io.observe(root);
+
+      syncToggleLabel();
+      render();
+      startTimer();
+    })();
   </script>
 </body>
 </html>

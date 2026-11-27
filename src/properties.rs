@@ -3,10 +3,13 @@
 
 use crate::mcp::{Action, Discovery, InputKind, RpcOutcome};
 use crate::schema::validate_against_schema;
+use crate::spec::{
+    ActionSpec, CompiledSpec, InitStep, ProbeSpec, SpecEngine, StringOrVec, TransitionSpec,
+};
 use antithesis_sdk::{assert_always, assert_sometimes};
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::{Map, Value, json};
 use std::path::Path;
 
 const LEAK_SIGNATURES: &[&str] = &[
@@ -24,14 +27,46 @@ pub struct Violation {
     pub message: String,
 }
 
-/// Optional declarative YAML rule file (`--rules rules.yaml`).
+fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    let opt = Option::deserialize(deserializer)?;
+    Ok(opt.unwrap_or_default())
+}
+
+/// Optional declarative YAML rules / stateful spec file (`--rules rules.yaml` or `--spec spec.yaml`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RuleSet {
+    /// Initial episode shadow state (reset on every run, shrink attempt, and `--replay`).
+    #[serde(default, deserialize_with = "deserialize_null_default")]
+    pub state: Map<String, Value>,
+    /// Optional initial probe calls run at episode start to seed `state` from live server reality.
+    #[serde(default, deserialize_with = "deserialize_null_default")]
+    pub init: Vec<InitStep>,
+    /// Optional state-machine transitions matching tool calls and updating `state`.
+    #[serde(default, deserialize_with = "deserialize_null_default")]
+    pub transitions: Vec<TransitionSpec>,
+    /// Optional read probes executed after steps to cross-check server reality against `state`.
+    #[serde(default, deserialize_with = "deserialize_null_default")]
+    pub probes: Vec<ProbeSpec>,
+    /// Optional state-guided action generators backed by shrinkable Hegel draws.
+    #[serde(default, deserialize_with = "deserialize_null_default")]
+    pub actions: Vec<ActionSpec>,
+    /// When true and `actions` is non-empty, only generate actions from `actions:` (no random schema fuzzing).
     #[serde(default)]
+    pub actions_only: bool,
+    /// Optional probability (`0.0..=1.0`) of attempting an adversarial state-machine break
+    /// (cross-state/precondition violation, deep arg mutation, or step replay) on each step.
+    #[serde(default)]
+    pub adversarial_rate: Option<f64>,
+    /// Declarative per-step invariant rules (substring, latency, valid-call checks, and CEL expressions).
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub rules: Vec<Rule>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Rule {
     pub name: String,
     /// Optional tool filter (applies to all actions if omitted).
@@ -46,15 +81,31 @@ pub struct Rule {
     /// Fail if a schema-valid call to this tool returns a JSON-RPC error or `isError: true`.
     #[serde(default)]
     pub valid_calls_succeed: bool,
+    /// Optional CEL guard expression (`when: "ok && args.id in state.items"`).
+    #[serde(default)]
+    pub when: Option<String>,
+    /// Optional CEL assertion expression (single string or list of strings).
+    #[serde(default)]
+    pub assert: Option<StringOrVec>,
 }
 
 impl RuleSet {
     pub fn load(path: &Path) -> Result<Self> {
         let raw = std::fs::read_to_string(path)
             .with_context(|| format!("failed reading rules file {}", path.display()))?;
-        let set: Self = serde_yaml::from_str(&raw)
-            .with_context(|| format!("failed parsing YAML rules in {}", path.display()))?;
+        Self::from_yaml(&raw)
+            .with_context(|| format!("failed parsing YAML rules/spec in {}", path.display()))
+    }
+
+    pub fn from_yaml(raw: &str) -> Result<Self> {
+        let set: Self = serde_yaml::from_str(raw)?;
+        // Validate all CEL expressions and state paths eagerly so errors surface before fuzzing.
+        let _ = set.compile()?;
         Ok(set)
+    }
+
+    pub fn compile(&self) -> Result<CompiledSpec> {
+        CompiledSpec::compile(self)
     }
 }
 
@@ -65,6 +116,35 @@ pub fn check_step(
     outcome: &RpcOutcome,
     discovery: &Discovery,
     rules: &RuleSet,
+) -> Vec<Violation> {
+    let mut violations = check_builtin_step(action, outcome, discovery);
+    if !violations.is_empty() || outcome.transport_error.is_some() {
+        return violations;
+    }
+
+    if !rules.rules.is_empty() {
+        match rules.compile() {
+            Ok(compiled) => {
+                let engine = SpecEngine::new(compiled);
+                violations.extend(engine.check_rules(action, outcome, 1, false));
+            }
+            Err(err) => {
+                violations.push(Violation {
+                    property: "spec_compile_error".into(),
+                    message: format!("{err:#}"),
+                });
+            }
+        }
+    }
+
+    violations
+}
+
+/// Evaluate built-in zero-config MCP protocol invariants only (no custom YAML rules).
+pub fn check_builtin_step(
+    action: &Action,
+    outcome: &RpcOutcome,
+    discovery: &Discovery,
 ) -> Vec<Violation> {
     let mut violations = Vec::new();
     let details = json!({
@@ -244,48 +324,6 @@ pub fn check_step(
             }
         }
         Action::GetPrompt { .. } | Action::Ping => {}
-    }
-
-    // 7. User-supplied declarative YAML rules
-    for rule in &rules.rules {
-        if let Some(target_tool) = &rule.tool {
-            match action {
-                Action::CallTool { name, .. } if name == target_tool => {}
-                _ => continue,
-            }
-        }
-
-        if let Some(forbidden) = &rule.never_contains
-            && serialized.contains(forbidden.as_str())
-        {
-            violations.push(Violation {
-                property: format!("rule:{}", rule.name),
-                message: format!("response contained forbidden substring '{forbidden}'"),
-            });
-        }
-
-        if let Some(max_ms) = rule.max_latency_ms {
-            let actual = outcome.latency.as_millis() as u64;
-            if actual > max_ms {
-                violations.push(Violation {
-                    property: format!("rule:{}", rule.name),
-                    message: format!("latency {actual}ms exceeded max_latency_ms {max_ms}ms"),
-                });
-            }
-        }
-
-        if rule.valid_calls_succeed
-            && let Action::CallTool {
-                input_kind: InputKind::Valid,
-                ..
-            } = action
-            && (outcome.error().is_some() || outcome.is_tool_error())
-        {
-            violations.push(Violation {
-                property: format!("rule:{}", rule.name),
-                message: format!("valid call {} failed: {}", action.short_label(), serialized),
-            });
-        }
     }
 
     violations
