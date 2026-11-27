@@ -57,9 +57,17 @@ struct Cli {
     #[arg(long, default_value_t = 5000)]
     timeout_ms: u64,
 
-    /// Optional YAML rules file for custom invariants
-    #[arg(long)]
+    /// Optional YAML rules/spec file for custom invariants, state machine, probes, and actions
+    #[arg(long, visible_alias = "spec")]
     rules: Option<PathBuf>,
+
+    /// Actively try to break state-machine specs (cross-state calls, payload mutation, step replay; sets rate 0.20)
+    #[arg(long)]
+    adversarial: bool,
+
+    /// Probability (0.0..=1.0) of attempting an adversarial state-machine break on each step (overrides spec `adversarial_rate`)
+    #[arg(long, value_name = "RATE")]
+    adversarial_rate: Option<f64>,
 
     /// Only call tools annotated with readOnlyHint: true
     #[arg(long)]
@@ -131,6 +139,10 @@ async fn run() -> Result<ExitCode> {
         (None, None) => Some(10),
     };
 
+    let adversarial_rate = cli
+        .adversarial_rate
+        .or_else(|| cli.adversarial.then_some(0.20));
+
     let cfg = RunConfig {
         target: target.clone(),
         runs,
@@ -139,6 +151,7 @@ async fn run() -> Result<ExitCode> {
         seed,
         timeout: Duration::from_millis(cli.timeout_ms),
         rules,
+        adversarial_rate,
         read_only: cli.read_only,
         only_tools: cli.only_tools,
         exclude_tools: cli.exclude_tools,
@@ -199,13 +212,7 @@ async fn run() -> Result<ExitCode> {
                 println!("\nFailing response:\n  {resp}");
             }
             if let Some(path) = &cli.save_trace {
-                let saved = SavedTrace {
-                    target: target.redacted(),
-                    seed: fail.seed,
-                    violation: fail.violation.clone(),
-                    original_steps: fail.original_len,
-                    actions: fail.shrunk_actions.clone(),
-                };
+                let saved = SavedTrace::from_failure(target.redacted(), &fail);
                 save_trace(path, &saved)?;
                 println!("\nSaved counterexample trace to {}", path.display());
             }

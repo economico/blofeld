@@ -32,6 +32,10 @@ impl ValuePool {
         self.total_values() == 0
     }
 
+    pub fn strings_slice(&self) -> &[String] {
+        &self.strings
+    }
+
     pub fn seed_resource_uris(&mut self, uris: &[String]) {
         for uri in uris {
             self.push_field("uri", Value::String(uri.clone()));
@@ -237,6 +241,31 @@ pub fn generate_tool_args(
         InputKind::Valid => gen_value(schema, None, pool, tc, false, 0),
         InputKind::Boundary => gen_value(schema, None, pool, tc, true, 0),
         InputKind::Malformed => gen_malformed_object(schema, tc),
+    }
+}
+
+/// Fill any missing `required` properties in `obj` using valid schema-guided generation.
+/// Does not draw from `tc` if all required properties are already present.
+pub fn fill_missing_required_args(
+    obj: &mut Map<String, Value>,
+    schema: &Value,
+    pool: &ValuePool,
+    tc: &TestCase,
+) {
+    let Some(required) = schema.get("required").and_then(Value::as_array) else {
+        return;
+    };
+    let props = schema.get("properties").and_then(Value::as_object);
+    for req in required.iter().filter_map(Value::as_str) {
+        if obj.contains_key(req) {
+            continue;
+        }
+        let prop_schema = props
+            .and_then(|p| p.get(req))
+            .cloned()
+            .unwrap_or_else(|| json!({ "type": "string" }));
+        let val = gen_value(&prop_schema, Some(req), pool, tc, false, 1);
+        obj.insert(req.to_string(), val);
     }
 }
 

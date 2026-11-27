@@ -386,3 +386,195 @@ fn parse_duration_handles_all_units_and_rejects_invalid(tc: TestCase) {
     assert!(parse_duration("42").is_err());
     assert!(parse_duration("10w").is_err());
 }
+
+#[hegel::test]
+fn json_cel_roundtrip_preserves_integers_strings_booleans_and_maps(tc: TestCase) {
+    let i = tc.draw(
+        gs::integers::<i64>()
+            .min_value(-1_000_000)
+            .max_value(1_000_000),
+    );
+    let s = tc.draw(gs::text().max_size(24));
+    let b = tc.draw(gs::booleans());
+    let list = tc.draw(gs::vecs(gs::integers::<i64>().min_value(-50).max_value(50)).max_size(6));
+
+    let doc = json!({
+        "int": i,
+        "str": s,
+        "bool": b,
+        "null": null,
+        "list": list,
+    });
+    let cel_val = blofeld::spec::json_to_cel(&doc);
+    let back = blofeld::spec::cel_to_json(&cel_val).unwrap();
+    assert_eq!(back, doc);
+}
+
+#[hegel::test]
+fn spec_engine_transition_upsert_and_delete_preserves_other_keys(tc: TestCase) {
+    let k1 = tc.draw(
+        gs::text()
+            .min_size(1)
+            .max_size(16)
+            .min_codepoint(0x21)
+            .max_codepoint(0x7E),
+    );
+    let k2 = tc.draw(
+        gs::text()
+            .min_size(1)
+            .max_size(16)
+            .min_codepoint(0x21)
+            .max_codepoint(0x7E),
+    );
+    tc.assume(k1 != k2);
+
+    let rules = RuleSet::from_yaml(
+        r#"
+state:
+  items: {}
+  count: 0
+transitions:
+  - name: add
+    tool: add
+    when: "ok"
+    update:
+      "items[args.id]": "'open'"
+      count: "state.count + 1"
+  - name: remove
+    tool: remove
+    when: "ok"
+    delete:
+      - "items[args.id]"
+    update:
+      count: "state.count - 1"
+"#,
+    )
+    .unwrap();
+    let mut engine = blofeld::spec::SpecEngine::new(rules.compile().unwrap());
+    let ok_outcome = RpcOutcome {
+        request_id: 1,
+        latency: Duration::from_millis(1),
+        http_status: Some(200),
+        www_authenticate: None,
+        raw_response: Some(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "content": [{ "type": "text", "text": "ok" }] }
+        })),
+        transport_error: None,
+        stdout_pollution: vec![],
+    };
+
+    assert!(
+        engine
+            .apply_transitions(
+                &Action::CallTool {
+                    name: "add".into(),
+                    arguments: json!({ "id": k1 }),
+                    input_kind: InputKind::Valid,
+                },
+                &ok_outcome,
+                1,
+                false,
+            )
+            .is_empty()
+    );
+    assert!(
+        engine
+            .apply_transitions(
+                &Action::CallTool {
+                    name: "add".into(),
+                    arguments: json!({ "id": k2 }),
+                    input_kind: InputKind::Valid,
+                },
+                &ok_outcome,
+                2,
+                false,
+            )
+            .is_empty()
+    );
+    assert_eq!(engine.state().get("count"), Some(&json!(2)));
+
+    assert!(
+        engine
+            .apply_transitions(
+                &Action::CallTool {
+                    name: "remove".into(),
+                    arguments: json!({ "id": k1 }),
+                    input_kind: InputKind::Valid,
+                },
+                &ok_outcome,
+                3,
+                false,
+            )
+            .is_empty()
+    );
+    assert_eq!(engine.state().get("count"), Some(&json!(1)));
+    let items = engine.state().get("items").unwrap().as_object().unwrap();
+    assert!(!items.contains_key(&k1));
+    assert_eq!(items.get(&k2), Some(&json!("open")));
+}
+
+#[hegel::test]
+fn spec_action_generators_respect_state_and_bounds(tc: TestCase) {
+    let rules = RuleSet::from_yaml(
+        r#"
+state:
+  items:
+    a: "open"
+    b: "locked"
+    c: "open"
+  tags: ["red", "green", "blue"]
+actions_only: true
+actions:
+  - name: pick-open
+    tool: act
+    when: "'open' in values(state.items)"
+    args:
+      id: "pick_key_where(state.items, 'open')"
+      tag: "pick_item(state.tags)"
+      n: "gen_int(10, 20)"
+      label: "gen_string(2, 6)"
+      flag: "gen_bool()"
+"#,
+    )
+    .unwrap();
+    let engine = blofeld::spec::SpecEngine::new(rules.compile().unwrap());
+    let tools = vec![blofeld::mcp::ToolDef {
+        name: "act".into(),
+        description: None,
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "string" },
+                "tag": { "type": "string" },
+                "n": { "type": "integer" },
+                "label": { "type": "string" },
+                "flag": { "type": "boolean" },
+                "extra_required": { "type": "integer", "minimum": 1, "maximum": 5 }
+            },
+            "required": ["id", "tag", "n", "label", "flag", "extra_required"]
+        }),
+        output_schema: None,
+        annotations: None,
+    }];
+    let pool = ValuePool::default();
+    let action = engine
+        .try_pick_action(&tools, &pool, &tc, 1, false)
+        .expect("action evaluation should succeed")
+        .expect("enabled action must be generated");
+    let Action::CallTool { arguments, .. } = action else {
+        panic!("expected CallTool");
+    };
+    let id = arguments["id"].as_str().unwrap();
+    assert!(id == "a" || id == "c", "unexpected id: {id}");
+    let tag = arguments["tag"].as_str().unwrap();
+    assert!(["red", "green", "blue"].contains(&tag));
+    let n = arguments["n"].as_i64().unwrap();
+    assert!((10..=20).contains(&n));
+    let label_len = arguments["label"].as_str().unwrap().chars().count();
+    assert!((2..=6).contains(&label_len));
+    assert!(arguments["flag"].is_boolean());
+    let extra = arguments["extra_required"].as_i64().unwrap();
+    assert!((1..=5).contains(&extra));
+}

@@ -420,6 +420,7 @@ fn base_config(url: String) -> RunConfig {
         seed: 42,
         timeout: Duration::from_secs(2),
         rules: RuleSet::default(),
+        adversarial_rate: None,
         read_only: false,
         only_tools: vec![],
         exclude_tools: vec![],
@@ -485,17 +486,7 @@ async fn discovers_and_shrinks_three_step_stateful_bug() {
 
     // Save and replay the shrunk trace to confirm deterministic reproduction
     let tmp = std::env::temp_dir().join("blofeld_test_trace.json");
-    save_trace(
-        &tmp,
-        &SavedTrace {
-            target: cfg.target.clone(),
-            seed: fail.seed,
-            violation: fail.violation.clone(),
-            original_steps: fail.original_len,
-            actions: fail.shrunk_actions.clone(),
-        },
-    )
-    .unwrap();
+    save_trace(&tmp, &SavedTrace::from_failure(cfg.target.clone(), &fail)).unwrap();
 
     let replayed = replay_trace(&cfg, &tmp).await.unwrap();
     let _ = std::fs::remove_file(&tmp);
@@ -530,7 +521,9 @@ async fn catches_yaml_rule_violation() {
             never_contains: Some("SECRET_TOKEN".into()),
             max_latency_ms: None,
             valid_calls_succeed: false,
+            ..Default::default()
         }],
+        ..Default::default()
     };
 
     let summary = explore(&cfg).await.unwrap();

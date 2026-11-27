@@ -5,3 +5,4 @@ pub mod explorer;
 pub mod mcp;
 pub mod properties;
 pub mod schema;
+pub mod spec;

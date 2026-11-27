@@ -22,7 +22,7 @@ Run `blofeld --help` for the complete flag list.
    blofeld https://localhost:8787/mcp -k --token-file auth.json \
      --time-limit 2m --save-trace blofeld.trace.json
    ```
-   Or budget by run count (`--runs 15 --steps 40`). Pass `-v` when inspecting live tool calls and latencies, or `--rules rules.yaml` to enforce project-specific invariants. Done when the campaign either exits `0` (`PASS`) or exits `1` (`FAIL`) with a shrunk counterexample and saved trace.
+   Or budget by run count (`--runs 15 --steps 40`). Pass `-v` when inspecting live tool calls and latencies, or `--rules rules.yaml` / `--spec spec.yaml` to enforce project-specific invariants and stateful specs. Done when the campaign either exits `0` (`PASS`) or exits `1` (`FAIL`) with a shrunk counterexample and saved trace.
 4. **Confirm the failure replays red.**
    ```sh
    blofeld https://localhost:8787/mcp -k --token-file auth.json \
@@ -62,9 +62,55 @@ Run `blofeld --help` for the complete flag list.
 
 Note: HTTP `4xx` transport-level refusals (such as `401`/`403`) without a JSON-RPC envelope are tolerated by default while still scanned for stack-trace leaks.
 
-### Custom YAML rules (`--rules rules.yaml`)
+### Custom YAML rules & stateful specs (`--rules` / `--spec`)
 
 ```yaml
+state:
+  items: {}
+  count: 0
+
+init:
+  - name: seed-count
+    call: { tool: list_items, arguments: {} }
+    update:
+      count: "size(res.items)"
+
+transitions:
+  - name: item-created
+    tool: create_item
+    when: "ok"
+    assert: "has(res.id) && !(res.id in state.items)"
+    update:
+      "items[res.id]": "'open'"
+      count: "state.count + 1"
+  - name: item-locked
+    tool: lock_item
+    when: "ok"
+    update:
+      "items[args.id]": "'locked'"
+  - name: item-deleted
+    tool: delete_item
+    when: "ok"
+    delete: ["items[args.id]"]
+    update:
+      count: "state.count - 1"
+
+probes:
+  - name: list-matches-model
+    after: mutating # or every_step, never, tool_name, or [tool_a, tool_b]
+    call: { tool: list_items, arguments: {} }
+    assert: "ok && size(res.items) == state.count"
+
+actions:
+  - tool: lock_item
+    when: "'open' in values(state.items)"
+    args:
+      id: "pick_key_where(state.items, 'open')"
+  - tool: delete_item
+    when: "size(state.items) > 0"
+    args:
+      id: "pick_key(state.items)"
+
 rules:
   - name: no-sql-errors
     never_contains: "SQLITE_ERROR"
@@ -73,9 +119,18 @@ rules:
   - name: list-always-succeeds
     tool: businesses
     valid_calls_succeed: true
+  - name: locked-item-cannot-be-deleted
+    tool: delete_item
+    when: "args.id in state.items && state.items[args.id] == 'locked'"
+    assert: "!ok"
 ```
 
-Each rule accepts `name` (required) and any combination of `tool` (optional filter), `never_contains`, `max_latency_ms`, and `valid_calls_succeed` (fails when a schema-valid call returns a JSON-RPC error or `isError: true`).
+All top-level sections are optional—start with just `rules:` for simple assertions, or combine `state:`, `init:`, `transitions:`, `probes:`, and `actions:` to model a stateful workflow. CEL expressions have access to `state`, `tool`, `args`, `ok`, normalized `res` (`structuredContent` → parsed JSON from `content[0].text` → raw `result`), `text`, `error`, `latency_ms`, `http_status`, `step` (plus `trigger` in `probes.assert`), pure helpers (`keys`, `values`, `get`, `set_entry`, `remove_key`, `sum`), and shrinkable Hegel generators inside `actions.args` (`pick_key`, `pick_value`, `pick_key_where`, `pick_item`/`pick`, `gen_int`, `gen_float`, `gen_string`, `gen_bool`). Episode shadow state resets cleanly on every run, during shrinking, and during `--replay`.
+
+Authoring notes:
+- String values inside `update:`, `call.arguments:`, and `actions.args:` are evaluated as CEL expressions (while numbers, booleans, and `null` are literal JSON values), so literal strings require inner quotes (e.g. `"'open'"`).
+- By default, Blofeld mixes `actions:` with general schema/boundary/malformed exploration; set `actions_only: true` at the top level to restrict generation strictly to `actions:`.
+- Pass `--adversarial` (or `--adversarial-rate <0.0..=1.0>` / YAML `adversarial_rate: 0.2`) to make Blofeld actively try to break state-machine specs via cross-state/precondition violations, nested argument mutations, and verbatim or mutated step replays (still respecting `--read-only`).
 
 ### Simulation & structured assertions
 
